@@ -1,0 +1,7 @@
+.DS_Store
+
+# Local working notes / conversation summaries — never publish
+claude-setup-summary.md
+
+# Installer backups, if anyone runs it from inside the repo
+*.bak.*
