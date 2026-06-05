@@ -31,10 +31,16 @@ MARKER_START="# >>> claude-code-setup >>>"
 MARKER_END="# <<< claude-code-setup <<<"
 TS="$(date +%Y%m%d%H%M%S)"
 
-ALL_COMPONENTS="claude-md hooks statusline skills plugins"
+ALL_COMPONENTS="claude-md hooks statusline skills plugins matt-pocock"
+DEFAULT_COMPONENTS="claude-md hooks statusline skills plugins"  # matt-pocock is opt-in (network + third-party)
 SELECTED=""
 DRY_RUN=0
 NON_INTERACTIVE=0
+
+# Matt Pocock's skills are fetched from his public repo at install time —
+# not re-vendored here. Toggle on with --matt-pocock or in the menu.
+MP_REPO="https://github.com/mattpocock/skills.git"
+MP_SKILLS="caveman diagnose grill-me grill-with-docs improve-codebase-architecture setup-matt-pocock-skills tdd to-issues to-prd zoom-out"
 
 # ---------------------------------------------------------------------------
 # Output helpers
@@ -64,6 +70,7 @@ label_for() {
     statusline) echo "statusline           → context / cost monitor" ;;
     skills)     echo "fix-pr-comments skill → ~/.claude/skills" ;;
     plugins)    echo "recommended plugins  → merged into enabledPlugins" ;;
+    matt-pocock) echo "Matt Pocock skills   → clone mattpocock/skills (network, third-party)" ;;
   esac
 }
 
@@ -75,9 +82,12 @@ install.sh — install parts of this Claude Code setup into \$CLAUDE_HOME (defau
   ./install.sh --all            install everything
   ./install.sh --hooks --statusline
   ./install.sh --all --no-plugins
-  ./install.sh --all --dry-run  show actions, change nothing
+  ./install.sh --matt-pocock     fetch Matt Pocock's skills from upstream
+  ./install.sh --all --dry-run   show actions, change nothing
 
-Components: claude-md  hooks  statusline  skills  plugins
+Components: claude-md  hooks  statusline  skills  plugins  matt-pocock
+  matt-pocock clones github.com/mattpocock/skills (network, third-party).
+  It is opt-in: included by --all, but off by default in the interactive menu.
 Flags:      --<component>  --no-<component>  --all  -y/--yes  --dry-run  -h/--help
 EOF
   exit 0
@@ -95,11 +105,13 @@ parse_args() {
       --statusline)   sel_add statusline; NON_INTERACTIVE=1 ;;
       --skills)       sel_add skills;     NON_INTERACTIVE=1 ;;
       --plugins)      sel_add plugins;    NON_INTERACTIVE=1 ;;
+      --matt-pocock)  sel_add matt-pocock; NON_INTERACTIVE=1 ;;
       --no-claude-md)  sel_remove claude-md ;;
       --no-hooks)      sel_remove hooks ;;
       --no-statusline) sel_remove statusline ;;
       --no-skills)     sel_remove skills ;;
       --no-plugins)    sel_remove plugins ;;
+      --no-matt-pocock) sel_remove matt-pocock ;;
       --dry-run)      DRY_RUN=1 ;;
       -h|--help)      usage ;;
       *) die "unknown option: $arg (try --help)" ;;
@@ -111,7 +123,7 @@ parse_args() {
 # Interactive checklist
 # ---------------------------------------------------------------------------
 interactive_menu() {
-  SELECTED="$ALL_COMPONENTS"   # default: everything on
+  SELECTED="$DEFAULT_COMPONENTS"   # local components on; matt-pocock off until toggled
   while true; do
     printf '\n%sSelect what to install%s  (type a number to toggle)\n' "$BOLD" "$RESET"
     i=1
@@ -257,6 +269,36 @@ install_plugins() {
   warn "plugins come from the official marketplace — Claude Code installs them on next start."
 }
 
+install_matt_pocock() {
+  step "installing Matt Pocock skills from mattpocock/skills"
+  command -v git >/dev/null 2>&1 || die "git is required for the matt-pocock component."
+  if [ "$DRY_RUN" = 1 ]; then
+    printf '%s[dry-run]%s clone %s, copy [%s] → %s/skills/\n' \
+      "$DIM" "$RESET" "$MP_REPO" "$MP_SKILLS" "$CLAUDE_DIR"
+    return 0
+  fi
+  tmp="$(mktemp -d)"
+  if ! git clone --depth 1 --quiet "$MP_REPO" "$tmp/repo" 2>/dev/null; then
+    rm -rf "$tmp"; die "could not clone $MP_REPO (offline?)"
+  fi
+  mkdir -p "$CLAUDE_DIR/skills"
+  n=0
+  for name in $MP_SKILLS; do
+    # Resolve each skill folder by name so upstream re-organisation doesn't break us.
+    dir="$(find "$tmp/repo" -type d -name "$name" 2>/dev/null | head -1)"
+    if [ -n "$dir" ] && [ -f "$dir/SKILL.md" ]; then
+      rm -rf "$CLAUDE_DIR/skills/$name"
+      cp -R "$dir" "$CLAUDE_DIR/skills/$name"
+      n=$((n+1))
+    else
+      warn "skipped $name (not found upstream)"
+    fi
+  done
+  rm -rf "$tmp"
+  step "installed $n Matt Pocock skill(s) → ~/.claude/skills/"
+  warn "these are third-party skills by Matt Pocock (github.com/mattpocock/skills) — see his LICENSE."
+}
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -285,6 +327,7 @@ main() {
       statusline) install_statusline ;;
       skills)     install_skills ;;
       plugins)    install_plugins ;;
+      matt-pocock) install_matt_pocock ;;
     esac
   done
 

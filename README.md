@@ -16,6 +16,7 @@ cd claude-setup
 ```bash
 ./install.sh --all                 # everything, no prompts
 ./install.sh --hooks --statusline  # just these
+./install.sh --matt-pocock         # also fetch Matt Pocock's skills from upstream
 ./install.sh --all --dry-run       # show every action, change nothing
 ```
 
@@ -100,11 +101,18 @@ only — it intentionally skips the permission allowlist so you don't inherit a 
 
 ### Skills → `skills/`
 
-One skill of my own plus a curated list of the community skills I lean on — see
+One skill of my own, plus an opt-in pull of the community skills I lean on — see
 [`skills/README.md`](skills/README.md).
 [`fix-pr-comments`](skills/fix-pr-comments/SKILL.md) fetches PR review comments via `gh`,
 classifies each as **FIX** (bugs, security, broken tests) or **SKIP** (taste, out-of-scope),
 fixes the legitimate ones, and reports a resolution summary. `install.sh --skills` installs it.
+
+`install.sh --matt-pocock` is separate: it **clones [Matt Pocock's public skills repo](https://github.com/mattpocock/skills)**
+at install time and copies the set I use (`grill-me`, `grill-with-docs`, `to-issues`,
+`to-prd`, `tdd`, `diagnose`, `improve-codebase-architecture`, `zoom-out`, `caveman`,
+`setup-matt-pocock-skills`) into `~/.claude/skills/`. Their code is fetched from upstream,
+not re-vendored here — so attribution stays with the author and you get his updates. It's
+opt-in (included by `--all`, off by default in the menu).
 
 ---
 
