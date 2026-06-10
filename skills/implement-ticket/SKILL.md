@@ -1,6 +1,6 @@
 ---
 name: implement-ticket
-description: Implement a Jira ticket from its description on a branch named after the ticket. Use when asked to "implement <TICKET-ID>", build a ticket, or work a ticket. Pass --worktree to isolate the work in a git worktree. Stops before opening a PR.
+description: Implement a ticket (Jira or GitHub issue) from its description on a branch named after the ticket. Use when asked to "implement <TICKET-ID>", build a ticket, or work a ticket. Pass --worktree to isolate the work in a git worktree. Stops before opening a PR.
 allowed-tools: Bash, Read, Edit, Write, Grep, Glob, mcp__claude_ai_Atlassian__getJiraIssue
 argument-hint: <TICKET-ID> [--worktree]
 ---
@@ -13,33 +13,41 @@ This skill does **not** grill or plan for you — the user does that beforehand 
 
 ## Step 1 — Read the ticket
 
-`$ARGUMENTS` contains the `<TICKET-ID>` (e.g. `DATAP-5585`). Fetch it via the Atlassian MCP (`getJiraIssue`, fields `summary,description`). Treat the description as the source of truth for what to build.
+`$ARGUMENTS` contains the ticket reference. Fetch it from whichever tracker fits:
 
-If the description is ambiguous or underspecified, **ask before coding** rather than guessing.
+- **Jira-shaped ID** (e.g. `ABC-123`) and the Atlassian MCP is connected → `getJiraIssue` (fields `summary,description`).
+- **GitHub issue** (e.g. `#123` or an issue URL) → `gh issue view <ref> --json title,body`.
+- **Neither works** → ask the user to paste the ticket description.
+
+Treat the description as the source of truth for what to build. If it is ambiguous or underspecified, **ask before coding** rather than guessing.
 
 ## Step 2 — Set up the workspace
+
+Resolve the repo's default branch first:
+
+```bash
+BASE=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
+[ -n "$BASE" ] || BASE=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)
+```
 
 **Default (no `--worktree`):**
 
 ```bash
-git checkout master && git pull     # merge, not rebase (repo convention)
-git checkout -b <ticketId>          # lowercased: datap-5585, mfe-7799
+git checkout "$BASE" && git pull
+git checkout -b <ticketId>          # lowercased ticket id, e.g. abc-123
 ```
 
 **With `--worktree`:** invoke the **using-git-worktrees** skill to create an isolated worktree on branch `<ticketId>`, then work there.
 
 ## Step 3 — Implement
 
-Implement the change described by the ticket, following the conventions of the area you're touching. The repo's scoped rules under `.claude/rules/` and any matching skill apply — e.g. `develop-customer-care` for CCS work, `check-migration-consistency` for `__new__` → `unified` migration.
+Implement the change described by the ticket, following the conventions of the area you're touching. If the repo has scoped rules (e.g. under `.claude/rules/`) or skills that match the area, apply them.
 
 Make the minimal correct change. Ask when uncertain.
 
 ## Step 4 — Verify
 
-Run lint and the **affected** tests (not the whole suite unless the change is broad):
-
-- `portal/` → `npm run test:unit`, lint via `npm run lint`
-- root (apps/libs) → `pnpm test`, lint via `pnpm run lint:fix`
+Run lint and the **affected** tests (not the whole suite unless the change is broad). Use the repo's own scripts — check `package.json` scripts plus the lockfile (pnpm/npm/yarn/bun), a `Makefile`, or the equivalent for the repo's language; in a monorepo, run them from the package you touched.
 
 Report results.
 

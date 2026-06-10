@@ -71,7 +71,7 @@ and **money** — impossible to ignore.
 ### Memory → `memory/`
 
 A small, typed memory system. Each fact is one Markdown file with frontmatter
-(`type: feedback | project | reference`), a body that states the rule plus **Why** and
+(`metadata.type: feedback | project | reference`), a body that states the rule plus **Why** and
 **How to apply**, and `[[wikilinks]]` between related facts. [`MEMORY.md`](memory/MEMORY.md)
 is the index loaded each session — one line per memory.
 
@@ -94,7 +94,7 @@ untouched.
 ### Settings → `settings/machine.settings.json`
 
 The wiring that ties the above together: `PostToolUse`/`PreCompact`/`PreToolUse` hooks
-(including an inline guard that blocks edits to `.env.local`/`.env.test`/`.env.mock`),
+(including an inline guard that blocks edits to `.env` files, except `.env.example`-style templates),
 the statusline command, and the enabled plugins. The installer merges the **safe** keys
 only — it intentionally skips the permission allowlist so you don't inherit a wide-open
 `Bash(*)` policy.
@@ -102,13 +102,15 @@ only — it intentionally skips the permission allowlist so you don't inherit a 
 ### Skills → `skills/`
 
 Six skills of my own, plus an opt-in pull of the community skills I lean on — see
-[`skills/README.md`](skills/README.md). They cover the ticket-to-merged loop:
-[`implement-ticket`](skills/implement-ticket/SKILL.md) builds a Jira ticket on its own
+[`skills/README.md`](skills/README.md). They cover the ticket-to-merged loop and adapt to
+the repo they run in (base branch from the remote, commands from the CI log or the repo's
+scripts, Jira or GitHub Issues as the tracker):
+[`implement-ticket`](skills/implement-ticket/SKILL.md) builds a ticket on its own
 branch and stops before the PR; [`create-pr`](skills/create-pr/SKILL.md) commits, pushes,
 and opens the PR with the repo's conventions; [`fix-pr-checks`](skills/fix-pr-checks/SKILL.md)
 and [`fix-pr-comments`](skills/fix-pr-comments/SKILL.md) get CI green and resolve legitimate
-review comments; [`resolve-conflicts`](skills/resolve-conflicts/SKILL.md) merges latest
-master safely; [`ticket-code-consistency`](skills/ticket-code-consistency/SKILL.md) syncs
+review comments; [`resolve-conflicts`](skills/resolve-conflicts/SKILL.md) merges the latest
+default branch safely; [`ticket-code-consistency`](skills/ticket-code-consistency/SKILL.md) syncs
 the ticket description back to the delivered code. `install.sh --skills` installs them all.
 
 `install.sh --matt-pocock` is separate: it **clones [Matt Pocock's public skills repo](https://github.com/mattpocock/skills)**

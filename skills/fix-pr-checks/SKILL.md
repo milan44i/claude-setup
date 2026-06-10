@@ -34,22 +34,21 @@ gh run view <run-id> --log-failed          # failing logs for a red run
 Classify each failure:
 
 **FIX** (reproduce and fix locally):
-- **Build** — TypeScript / `nest build` / portal `vite build` compile errors.
-- **Unit tests** — root (`pnpm test`) or portal (`npm run test:unit`).
-- **Lint** — ESLint / Prettier (`pnpm run lint:fix`, portal `npm run lint`).
+- **Build / type-check**, **unit-test**, and **lint** failures you can reproduce with the repo's own scripts.
 
 **REPORT only** (do not attempt to fix):
-- **Integration tests** (`apps_it`) — need `.env.mock` + live services; not reliably reproducible locally.
-- **Domain linters** — swagger, k8s, event-schema, db-migration-guard, etc.
-- **Flaky / infra / timeout** failures unrelated to the diff.
+- Checks that need **live services, secrets, or CI-only tooling** — integration/e2e suites, deploy and infra checks, org-specific custom linters.
+- Failures **unrelated to the diff** — flaky tests, infra errors, timeouts.
+
+Rule of thumb: if a clean checkout plus the repo's own scripts can't reproduce it, report it.
 
 ## Step 3 — Reproduce the failing target locally
 
-Run **only the failing target**, not the whole suite (the monorepo is large):
+The failing job's log shows the **exact command CI ran** — mirror it. Run **only the failing target**, not the whole suite:
 
-- Build: build just the failing app/package.
-- Unit test: the specific failing test file or package — e.g. `npm run test:unit -- <file>` (portal), `pnpm test <path>` (root).
-- Lint: `pnpm run lint:fix` (root) or `npm run lint` (portal).
+- Lift the command and working directory from the failing job's log.
+- If the log is unclear, fall back to the repo's own scripts: `package.json` scripts plus the lockfile (pnpm/npm/yarn/bun), a `Makefile`, or the equivalent for the repo's language.
+- Narrow to the failing file or package where the runner allows it (e.g. `npm test -- <file>`).
 
 Confirm you can see the same failure locally before changing anything.
 
@@ -74,6 +73,6 @@ If a worktree was created in Step 1, **remove it** now (ExitWorktree with remova
 Summarize:
 - Which checks were red, and the root cause of each.
 - What was fixed and verified locally, and the single push made.
-- Which failures were **left for you** (integration / domain-linter / flaky) and why.
+- Which failures were **left for you** (not reproducible locally / unrelated to the diff) and why.
 
 CI will re-run on the push. If a *different* check then fails, re-invoke this skill.

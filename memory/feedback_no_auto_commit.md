@@ -1,8 +1,8 @@
 ---
-name: NEVER auto-commit
+name: feedback-no-auto-commit
 description: NEVER run git commit without an explicit request in the CURRENT prompt — even follow-up/"do the same" tasks require fresh confirmation
-type: feedback
-originSessionId: <session-id>
+metadata:
+  type: feedback
 ---
 **NEVER run `git commit` (or `git add` with intent to commit) unless the user has explicitly asked to commit IN THE CURRENT PROMPT.**
 

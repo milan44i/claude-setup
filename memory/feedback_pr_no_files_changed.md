@@ -1,8 +1,8 @@
 ---
-name: PR descriptions — no files-changed list
+name: feedback-pr-no-files-changed
 description: Don't include a "files changed" list in PR descriptions; reviewers see the file diffs natively in GitHub
-type: feedback
-originSessionId: <session-id>
+metadata:
+  type: feedback
 ---
 **Do not include a list of changed files in PR descriptions.**
 

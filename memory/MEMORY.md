@@ -1,7 +1,7 @@
 # Memory
 
 The index loaded each session — one line per memory, newest context at a glance.
-Each linked file holds **one fact** with frontmatter (`type: feedback | project | reference`),
+Each linked file holds **one fact** with frontmatter (`metadata.type: feedback | project | reference`),
 the rule, and **Why** / **How to apply**. Facts link to each other with `[[wikilinks]]`.
 
 These three are real, reusable preferences — copy them into a project's memory dir and adapt.

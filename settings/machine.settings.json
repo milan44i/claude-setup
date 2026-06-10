@@ -23,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -q '\\.env\\.local\\|\\.env\\.test\\|\\.env\\.mock'; then echo 'Blocked: editing env files requires explicit user approval'; exit 2; fi"
+            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -qE '\\.env(\\.[A-Za-z0-9_-]+)*\"' && ! echo \"$CLAUDE_TOOL_INPUT\" | grep -qE '\\.env\\.(example|sample|template)\"'; then echo 'Blocked: editing .env files requires explicit user approval'; exit 2; fi"
           }
         ]
       }

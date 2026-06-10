@@ -71,10 +71,10 @@ For each **FIX** comment:
 4. If a test is needed, add it in the appropriate test file
 5. Do not add comments, docstrings, or explanations to the code unless the comment explicitly requests them
 
-After all fixes are applied, run lint to ensure nothing broke:
+After all fixes are applied, run the repo's lint script (from `package.json` scripts, a `Makefile`, or the equivalent for the repo's language) to ensure nothing broke, e.g.:
 
 ```bash
-npm run lint:fix 2>&1 | tail -20
+npm run lint 2>&1 | tail -20
 ```
 
 ## Step 5 — Report

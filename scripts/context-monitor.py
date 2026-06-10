@@ -56,8 +56,20 @@ def get_git_status():
         return ""
 
 
+def get_native_context(data):
+    """Prefer the context_window block Claude Code passes on stdin — accurate for any model/window size."""
+    cw = data.get("context_window") or {}
+    pct = cw.get("used_percentage")
+    if pct is None:
+        return None
+    try:
+        return {"percent": min(100.0, float(pct)), "method": "native"}
+    except (TypeError, ValueError):
+        return None
+
+
 def parse_context_from_transcript(transcript_path):
-    """Parse context usage from transcript file."""
+    """Fallback: estimate context usage from the transcript file."""
     if not transcript_path or not os.path.exists(transcript_path):
         return None
 
@@ -82,7 +94,8 @@ def parse_context_from_transcript(transcript_path):
                         cache_read = usage.get("cache_read_input_tokens", 0)
                         cache_creation = usage.get("cache_creation_input_tokens", 0)
 
-                        # Estimate context usage (assume 200k context for Claude Sonnet)
+                        # Rough estimate against a 200k window — only used when the
+                        # harness doesn't provide context_window on stdin.
                         total_tokens = input_tokens + cache_read + cache_creation
                         if total_tokens > 0:
                             percent_used = min(100, (total_tokens / 200000) * 100)
@@ -254,8 +267,10 @@ def main():
         transcript_path = data.get("transcript_path", "")
         cost_data = data.get("cost", {})
 
-        # Parse context usage
-        context_info = parse_context_from_transcript(transcript_path)
+        # Context usage: native field first, transcript estimate as fallback
+        context_info = get_native_context(data) or parse_context_from_transcript(
+            transcript_path
+        )
 
         # Build status components
         context_display = get_context_display(context_info)
