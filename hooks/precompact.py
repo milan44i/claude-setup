@@ -3,7 +3,7 @@
 PreCompact hook: saves meaningful context before compaction.
 
 Mechanical extraction (fast):
-  - Branch + Jira ticket
+  - Branch + ticket id
   - Modified files (git status)
   - Test commands run + pass/fail result
   - Active todos
@@ -38,7 +38,7 @@ def get_git_info(cwd):
         ).decode().strip()
         ticket_m = re.search(r'[a-z]+-\d+', branch, re.IGNORECASE)
         ticket = ticket_m.group().upper() if ticket_m else 'none'
-        parts.append(f"Branch: {branch}\nJira Ticket: {ticket}")
+        parts.append(f"Branch: {branch}\nTicket: {ticket}")
     except Exception:
         parts.append("Branch: unknown")
 
@@ -96,7 +96,12 @@ def _extract_text(content):
 # Mechanical extraction: test runs + todos
 # ---------------------------------------------------------------------------
 
-TEST_RE = re.compile(r'\b(jest|vitest|pnpm test|pnpm run test|npm run test|npm test|bun test)\b', re.IGNORECASE)
+TEST_RE = re.compile(
+    r'\b(jest|vitest|playwright test|pytest|tox|rspec|phpunit|go test|'
+    r'cargo (test|nextest)|mvn (test|verify)|gradlew? test|dotnet test|'
+    r'mix test|ctest|make test|(pnpm|npm|yarn|bun)( run)? test)\b',
+    re.IGNORECASE,
+)
 PASS_FAIL_RE = re.compile(
     r'(Tests?|Suites?|PASS|FAIL|passed|failed|✓|✗|×|●)', re.IGNORECASE
 )

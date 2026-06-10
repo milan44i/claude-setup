@@ -1,21 +1,4 @@
 {
-  "permissions": {
-    "allow": [
-      "Bash(*)",
-      "Read(*)",
-      "Write(*)",
-      "Edit(*)",
-      "Glob(*)",
-      "Grep(*)",
-      "TodoWrite(*)",
-      "WebFetch(*)",
-      "WebSearch(*)",
-      "Task(*)",
-      "NotebookEdit(*)",
-      "mcp__plugin_playwright_playwright__*",
-      "Skill(update-config:*)"
-    ]
-  },
   "hooks": {
     "PreToolUse": [
       {
@@ -38,6 +21,16 @@
             "timeout": 120,
             "statusMessage": "Checking TypeScript errors...",
             "asyncRewake": true
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/rename-plan.py",
+            "timeout": 10
           }
         ]
       }
@@ -72,12 +65,7 @@
     "frontend-design@claude-plugins-official": true,
     "superpowers@claude-plugins-official": true,
     "chrome-devtools-mcp@claude-plugins-official": true,
-    "figma@claude-plugins-official": false,
     "skill-creator@claude-plugins-official": true
   },
-  "effortLevel": "xhigh",
-  "plansDirectory": ".claude/plans",
-  "remoteControlAtStartup": true,
-  "agentPushNotifEnabled": true,
-  "skipAutoPermissionPrompt": true
+  "plansDirectory": ".claude/plans"
 }

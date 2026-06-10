@@ -28,11 +28,12 @@ BASE=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^o
 git branch --show-current
 ```
 
-- **On the default branch**: this work needs its own branch. Determine the ticket id (from `$ARGUMENTS`, the conversation, or ask the user), then create the branch with the **lowercased** id:
+- **On the default branch**: this work needs its own branch. Determine the ticket id (from `$ARGUMENTS`, the conversation, or ask the user), then create the branch, **mirroring the repo's existing branch-naming convention**:
   ```bash
-  git checkout -b <ticketId>     # e.g. abc-123
+  git for-each-ref refs/remotes/origin --sort=-committerdate --format='%(refname:short)' | head -15
   ```
-- **Already on a branch**: use it as-is. Derive the ticket id from the branch name, **uppercased** (`abc-123` → `ABC-123`).
+  Follow the pattern those branches show (e.g. `feature/abc-123-short-slug`). When no clear pattern emerges, default to the bare lowercased ticket id: `git checkout -b abc-123`.
+- **Already on a branch**: use it as-is. Extract the ticket id from the branch name — the ticket-shaped substring anywhere in it, **uppercased** (`feature/abc-123-add-login` → `ABC-123`).
 - If `no-ticket` is set, or no ticket id can be determined, treat this as a no-ticket PR.
 
 ## Step 2 — Fetch the ticket title and infer the title convention (skip fetch for no-ticket)

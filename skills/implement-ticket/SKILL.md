@@ -30,14 +30,16 @@ BASE=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^o
 [ -n "$BASE" ] || BASE=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)
 ```
 
+Name the branch after the ticket, **mirroring the repo's existing branch-naming convention** (`git for-each-ref refs/remotes/origin --sort=-committerdate --format='%(refname:short)' | head -15`). When no clear pattern emerges, default to the bare lowercased ticket id (`abc-123`).
+
 **Default (no `--worktree`):**
 
 ```bash
 git checkout "$BASE" && git pull
-git checkout -b <ticketId>          # lowercased ticket id, e.g. abc-123
+git checkout -b <branch>            # e.g. abc-123, or feature/abc-123-… if that's the repo's pattern
 ```
 
-**With `--worktree`:** invoke the **using-git-worktrees** skill to create an isolated worktree on branch `<ticketId>`, then work there.
+**With `--worktree`:** invoke the **using-git-worktrees** skill to create an isolated worktree on that branch, then work there.
 
 ## Step 3 — Implement
 

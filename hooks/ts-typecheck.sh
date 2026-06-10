@@ -56,10 +56,15 @@ else
   EDITED_RELATIVE=$(F="$FILE_PATH" P="$PROJECT_DIR" python3 -c 'import os, os.path; print(os.path.relpath(os.environ["F"], os.environ["P"]))')
 fi
 
-# Pick the right type checker
+# Pick the right type checker. --build only fits composite/project-references
+# setups; plain projects type-check with --noEmit.
 cd "$PROJECT_DIR"
 if [ -f "node_modules/.bin/vue-tsc" ]; then
-  TSC_CMD="npx vue-tsc --build"
+  if grep -q '"references"' tsconfig.json 2>/dev/null; then
+    TSC_CMD="npx vue-tsc --build"
+  else
+    TSC_CMD="npx vue-tsc --noEmit"
+  fi
 elif [ -f "node_modules/.bin/tsc" ]; then
   TSC_CMD="npx tsc --noEmit"
 else
@@ -67,8 +72,8 @@ else
   exit 0
 fi
 
-# Run type checker
-TSC_OUTPUT=$(NODE_OPTIONS='--max-old-space-size=8192' $TSC_CMD 2>&1 || true)
+# Run type checker (heap size overridable for very large projects)
+TSC_OUTPUT=$(NODE_OPTIONS="${TS_TYPECHECK_NODE_OPTIONS:---max-old-space-size=8192}" $TSC_CMD 2>&1 || true)
 
 if [ -z "$TSC_OUTPUT" ]; then
   exit 0

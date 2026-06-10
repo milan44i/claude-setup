@@ -6,8 +6,8 @@
 #   - Never clobber. settings.json and CLAUDE.md are backed up, then *merged*.
 #   - Idempotent. Re-running installs the same thing without duplicating entries.
 #   - Honest. --dry-run shows every action; nothing touches disk until you say so.
-#   - Safe by default. The broad permission allowlist in machine.settings.json is
-#     NOT installed — only hook/statusline/plugin wiring is.
+#   - Safe by default. machine.settings.json carries no permission allowlist —
+#     only hook/statusline/plugin wiring (plus plansDirectory) is merged.
 #   - Portable. Plain POSIX-ish bash; works on stock macOS bash 3.2.
 #
 # Usage:
@@ -66,10 +66,10 @@ sel_toggle()  { if is_selected "$1"; then sel_remove "$1"; else sel_add "$1"; fi
 label_for() {
   case "$1" in
     claude-md)  echo "global CLAUDE.md     → ~/.claude/CLAUDE.md (under a marker)" ;;
-    hooks)      echo "hooks + settings wiring → ts-typecheck, precompact, env-guard" ;;
+    hooks)      echo "hooks + settings wiring → ts-typecheck, precompact, rename-plan, env-guard" ;;
     statusline) echo "statusline           → context / cost monitor" ;;
     skills)     echo "bundled skills       → ~/.claude/skills" ;;
-    plugins)    echo "recommended plugins  → merged into enabledPlugins" ;;
+    plugins)    echo "plugins I use        → merged into enabledPlugins" ;;
     matt-pocock) echo "Matt Pocock skills   → clone mattpocock/skills (network, third-party)" ;;
   esac
 }
@@ -243,11 +243,13 @@ install_hooks() {
   copy_file "$SRC/hooks/precompact.py"   "$CLAUDE_DIR/hooks/precompact.py"
   copy_file "$SRC/hooks/rename-plan.py"  "$CLAUDE_DIR/hooks/rename-plan.py"
   # Merge .hooks from machine settings, deduped per event by serialized group.
+  # Also set plansDirectory (rename-plan looks there) unless the user has one.
   merge_settings '
     reduce ($src.hooks | keys[]) as $ev (
       .;
       .hooks[$ev] = (((.hooks[$ev]) // []) + ($src.hooks[$ev] // []) | unique_by(tojson))
-    )'
+    )
+    | .plansDirectory = (.plansDirectory // $src.plansDirectory)'
 }
 
 install_statusline() {
@@ -266,7 +268,7 @@ install_skills() {
 }
 
 install_plugins() {
-  step "enabling recommended plugins"
+  step "enabling plugins"
   # User's existing choices win over ours on conflict.
   merge_settings '.enabledPlugins = (($src.enabledPlugins // {}) + (.enabledPlugins // {}))'
   warn "plugins come from the official marketplace — Claude Code installs them on next start."

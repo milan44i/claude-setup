@@ -11,7 +11,7 @@ Reconcile a ticket's description with the **delivered code**, and update the tic
 
 ## Step 1 — Determine the ticket
 
-Use the ticket reference from `$ARGUMENTS` if provided. Otherwise derive it from the current branch name (`abc-123` → `ABC-123`). Pick the tracker that fits: a Jira-shaped ID with the Atlassian MCP connected → Jira; a GitHub issue ref → `gh issue`. If neither resolves, ask the user.
+Use the ticket reference from `$ARGUMENTS` if provided. Otherwise extract it from the current branch name — the ticket-shaped substring anywhere in the name, uppercased (`feature/abc-123-add-login` → `ABC-123`). Pick the tracker that fits: a Jira-shaped ID with the Atlassian MCP connected → Jira; a GitHub issue ref → `gh issue`. If neither resolves, ask the user.
 
 ## Step 2 — Gather the delivered changes
 

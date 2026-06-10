@@ -23,8 +23,9 @@ cd claude-setup
 **The installer is built to be safe to run on a machine you already use:**
 it **backs up** `settings.json` and `CLAUDE.md` before touching them, **merges** instead of
 overwriting (your existing keys win), is **idempotent** (re-running never duplicates hook
-entries), and **does not install my permission allowlist** — only hook/statusline/plugin
-wiring. Install into a sandbox first with `CLAUDE_HOME=/tmp/cc ./install.sh --all`.
+entries), and **installs no permission allowlist** — the settings here carry only
+hook/statusline/plugin wiring, so your permission policy stays yours.
+Install into a sandbox first with `CLAUDE_HOME=/tmp/cc ./install.sh --all`.
 Runs on stock macOS bash 3.2.
 
 ---
@@ -53,11 +54,13 @@ The setup exists to enforce a few opinions:
 
 | File | What it does | The idea |
 |---|---|---|
-| [`ts-typecheck.sh`](hooks/ts-typecheck.sh) | After any `Edit`/`Write` of a `.ts`/`.tsx`/`.vue` file, finds the nearest `tsconfig`, runs `vue-tsc`/`tsc`, filters errors to the file you just touched, and exits `2` to re-wake the model with them. | A self-healing edit loop. `exit 2` + `asyncRewake` hands the model its own compiler errors as the next thing it sees — so type breakage gets fixed in the same flow, not at PR time. |
-| [`precompact.py`](hooks/precompact.py) | On `PreCompact`, gathers git state + test-run results + active todos mechanically, then calls `claude -p` to write a "problem / what was tried / findings / next steps" summary. Injects it as `additionalContext` and saves `.claude/compact/summary.md`. | Compaction is lossy. Mechanical extraction is cheap and reliable; the AI pass captures the *narrative* you'd otherwise lose. Belt and suspenders. |
-| [`rename-plan.py`](hooks/rename-plan.py) | Renames a written plan file to a slug derived from its `# H1`. | Small quality-of-life: plans end up named for what they are. |
+| [`ts-typecheck.sh`](hooks/ts-typecheck.sh) | After any `Edit`/`Write` of a `.ts`/`.tsx`/`.vue` file, finds the nearest `tsconfig`, runs `vue-tsc`/`tsc` (`--build` for project-references setups, `--noEmit` otherwise), filters errors to the file you just touched, and exits `2` to re-wake the model with them. | A self-healing edit loop. `exit 2` + `asyncRewake` hands the model its own compiler errors as the next thing it sees — so type breakage gets fixed in the same flow, not at PR time. |
+| [`precompact.py`](hooks/precompact.py) | On `PreCompact`, gathers git state + test-run results (jest, vitest, pytest, go test, cargo test, …) + active todos mechanically, then calls `claude -p` to write a "problem / what was tried / findings / next steps" summary. Injects it as `additionalContext` and saves `.claude/compact/summary.md`. | Compaction is lossy. Mechanical extraction is cheap and reliable; the AI pass captures the *narrative* you'd otherwise lose. Belt and suspenders. |
+| [`rename-plan.py`](hooks/rename-plan.py) | On `PostToolUse` for `Write`, renames a plan file written under `.claude/plans/` to a slug derived from its `# H1`. | Small quality-of-life: plans end up named for what they are. |
 
-`install.sh --hooks` copies these and merges their wiring into `settings.json`.
+`install.sh --hooks` copies these and merges their wiring into `settings.json` — including
+`plansDirectory: ".claude/plans"` (kept only if you don't already set one) so the
+plan-rename hook has somewhere to look.
 
 ### Statusline → `scripts/`
 
@@ -95,16 +98,18 @@ untouched.
 
 The wiring that ties the above together: `PostToolUse`/`PreCompact`/`PreToolUse` hooks
 (including an inline guard that blocks edits to `.env` files, except `.env.example`-style templates),
-the statusline command, and the enabled plugins. The installer merges the **safe** keys
-only — it intentionally skips the permission allowlist so you don't inherit a wide-open
-`Bash(*)` policy.
+the statusline command, the enabled plugins, and `plansDirectory` (so the plan-rename hook
+knows where plans live). The file contains **no permission allowlist and no personal
+preferences** — it's safe to copy wholesale, and the installer merges only the keys it
+owns, with your existing values winning on conflict.
 
 ### Skills → `skills/`
 
 Six skills of my own, plus an opt-in pull of the community skills I lean on — see
 [`skills/README.md`](skills/README.md). They cover the ticket-to-merged loop and adapt to
-the repo they run in (base branch from the remote, commands from the CI log or the repo's
-scripts, Jira or GitHub Issues as the tracker):
+the repo they run in (base branch from the remote, branch naming from the repo's existing
+branches, commands from the CI log or the repo's scripts, Jira or GitHub Issues as the
+tracker):
 [`implement-ticket`](skills/implement-ticket/SKILL.md) builds a ticket on its own
 branch and stops before the PR; [`create-pr`](skills/create-pr/SKILL.md) commits, pushes,
 and opens the PR with the repo's conventions; [`fix-pr-checks`](skills/fix-pr-checks/SKILL.md)
@@ -131,7 +136,7 @@ opt-in (included by `--all`, off by default in the menu).
 | `hooks/` | `ts-typecheck.sh`, `precompact.py`, `rename-plan.py` |
 | `scripts/` | `context-monitor.py` statusline + a minimal alternative |
 | `memory/` | `MEMORY.md` index + example typed memories |
-| `settings/machine.settings.json` | Hook/statusline/plugin wiring (permissions intentionally excluded) |
+| `settings/machine.settings.json` | Hook/statusline/plugin wiring (no permissions, no personal prefs) |
 | `plugins/enabled.json` | The official-marketplace plugins I enable |
 | `skills/` | Six PR/ticket-workflow skills + a curated list of skills I rely on |
 

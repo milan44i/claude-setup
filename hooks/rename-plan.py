@@ -1,6 +1,22 @@
 import json, os, re, sys
 
-tool_input = json.loads(os.environ.get('CLAUDE_TOOL_INPUT', '{}'))
+
+def get_tool_input():
+    # Hook input arrives as JSON on stdin; CLAUDE_TOOL_INPUT is a fallback
+    # for setups that expose the tool input as an env var instead.
+    try:
+        data = json.load(sys.stdin)
+        if isinstance(data, dict) and isinstance(data.get('tool_input'), dict):
+            return data['tool_input']
+    except Exception:
+        pass
+    try:
+        return json.loads(os.environ.get('CLAUDE_TOOL_INPUT', '{}'))
+    except Exception:
+        return {}
+
+
+tool_input = get_tool_input()
 file_path = tool_input.get('file_path', '')
 
 if '.claude/plans/' not in file_path or not file_path.endswith('.md'):
