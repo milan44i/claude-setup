@@ -5,8 +5,19 @@
 | Skill | What it does |
 |---|---|
 | [`fix-pr-comments`](fix-pr-comments/SKILL.md) | Fetches PR review comments with `gh`, classifies each as **FIX** (bugs, security, broken contracts, missing tests) or **SKIP** (taste, questions, out-of-scope), fixes the legitimate ones with minimal diffs, and prints a resolution summary. Errs toward SKIP when uncertain. |
+| [`create-pr`](create-pr/SKILL.md) | Commits, pushes, and opens a PR end to end — ticket-prefixed title from Jira, body from the repo's PR template. Invoking it **is** the commit/push authorization, scoped to that run only. |
+| [`fix-pr-checks`](fix-pr-checks/SKILL.md) | Fixes a PR's failing build / unit-test / lint checks: reproduces each locally, fixes the root cause, verifies green, pushes once. Current branch in place, or a PR number/URL in a throwaway worktree. Reports (doesn't touch) integration/flaky/infra failures. |
+| [`implement-ticket`](implement-ticket/SKILL.md) | Implements a Jira ticket from its description on a `<ticketId>` branch (`--worktree` for isolation). Treats the ticket as the spec, runs affected tests, and **stops before the PR** — review, then `/create-pr`. |
+| [`resolve-conflicts`](resolve-conflicts/SKILL.md) | Merges latest `master` and resolves conflicts — auto on clear ones, asks (with a recommendation) on ambiguous ones. Runs affected tests, commits the merge locally, stops before push. |
+| [`ticket-code-consistency`](ticket-code-consistency/SKILL.md) | Updates a Jira ticket's description to match what the branch's code actually does (direction is always code → ticket). Edits the ticket directly via the Atlassian MCP. |
 
-Install it with `./install.sh --skills` (copies into `~/.claude/skills/`).
+Install them with `./install.sh --skills` (copies every skill here into `~/.claude/skills/`).
+
+The PR/ticket skills together form a loop: `implement-ticket` → review → `create-pr` →
+`fix-pr-checks` / `fix-pr-comments` → `resolve-conflicts` when master moves →
+`ticket-code-consistency` to leave the ticket honest. They encode *my* work repo's
+conventions — Jira ticket IDs as branch names, `master` as the base branch, a pnpm/npm
+monorepo — so adapt the specifics (base branch, test commands, tracker MCP) to yours.
 
 ## Matt Pocock's skills (`./install.sh --matt-pocock`)
 

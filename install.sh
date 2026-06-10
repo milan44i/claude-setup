@@ -68,7 +68,7 @@ label_for() {
     claude-md)  echo "global CLAUDE.md     → ~/.claude/CLAUDE.md (under a marker)" ;;
     hooks)      echo "hooks + settings wiring → ts-typecheck, precompact, env-guard" ;;
     statusline) echo "statusline           → context / cost monitor" ;;
-    skills)     echo "fix-pr-comments skill → ~/.claude/skills" ;;
+    skills)     echo "bundled skills       → ~/.claude/skills" ;;
     plugins)    echo "recommended plugins  → merged into enabledPlugins" ;;
     matt-pocock) echo "Matt Pocock skills   → clone mattpocock/skills (network, third-party)" ;;
   esac
@@ -258,8 +258,11 @@ install_statusline() {
 }
 
 install_skills() {
-  step "installing fix-pr-comments skill"
-  copy_file "$SRC/skills/fix-pr-comments" "$CLAUDE_DIR/skills/fix-pr-comments"
+  step "installing bundled skills"
+  for dir in "$SRC"/skills/*/; do
+    [ -f "$dir/SKILL.md" ] || continue
+    copy_file "${dir%/}" "$CLAUDE_DIR/skills/$(basename "$dir")"
+  done
 }
 
 install_plugins() {

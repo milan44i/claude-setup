@@ -101,11 +101,15 @@ only — it intentionally skips the permission allowlist so you don't inherit a 
 
 ### Skills → `skills/`
 
-One skill of my own, plus an opt-in pull of the community skills I lean on — see
-[`skills/README.md`](skills/README.md).
-[`fix-pr-comments`](skills/fix-pr-comments/SKILL.md) fetches PR review comments via `gh`,
-classifies each as **FIX** (bugs, security, broken tests) or **SKIP** (taste, out-of-scope),
-fixes the legitimate ones, and reports a resolution summary. `install.sh --skills` installs it.
+Six skills of my own, plus an opt-in pull of the community skills I lean on — see
+[`skills/README.md`](skills/README.md). They cover the ticket-to-merged loop:
+[`implement-ticket`](skills/implement-ticket/SKILL.md) builds a Jira ticket on its own
+branch and stops before the PR; [`create-pr`](skills/create-pr/SKILL.md) commits, pushes,
+and opens the PR with the repo's conventions; [`fix-pr-checks`](skills/fix-pr-checks/SKILL.md)
+and [`fix-pr-comments`](skills/fix-pr-comments/SKILL.md) get CI green and resolve legitimate
+review comments; [`resolve-conflicts`](skills/resolve-conflicts/SKILL.md) merges latest
+master safely; [`ticket-code-consistency`](skills/ticket-code-consistency/SKILL.md) syncs
+the ticket description back to the delivered code. `install.sh --skills` installs them all.
 
 `install.sh --matt-pocock` is separate: it **clones [Matt Pocock's public skills repo](https://github.com/mattpocock/skills)**
 at install time and copies the set I use (`grill-me`, `grill-with-docs`, `to-issues`,
@@ -127,7 +131,7 @@ opt-in (included by `--all`, off by default in the menu).
 | `memory/` | `MEMORY.md` index + example typed memories |
 | `settings/machine.settings.json` | Hook/statusline/plugin wiring (permissions intentionally excluded) |
 | `plugins/enabled.json` | The official-marketplace plugins I enable |
-| `skills/` | `fix-pr-comments` + a curated list of skills I rely on |
+| `skills/` | Six PR/ticket-workflow skills + a curated list of skills I rely on |
 
 ## License
 
