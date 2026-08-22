@@ -17,7 +17,7 @@
 #   ./install.sh --all --no-plugins
 #   ./install.sh --all --dry-run
 #
-# Components: claude-md  hooks  statusline  skills  plugins
+# Components: claude-md  hooks  statusline  skills  memory  axi  plugins
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
@@ -31,16 +31,16 @@ MARKER_START="# >>> claude-code-setup >>>"
 MARKER_END="# <<< claude-code-setup <<<"
 TS="$(date +%Y%m%d%H%M%S)"
 
-ALL_COMPONENTS="claude-md hooks statusline skills plugins matt-pocock"
-DEFAULT_COMPONENTS="claude-md hooks statusline skills plugins"  # matt-pocock is opt-in (network + third-party)
+ALL_COMPONENTS="claude-md hooks statusline skills memory axi plugins"
+DEFAULT_COMPONENTS="claude-md hooks statusline skills memory plugins"  # axi is opt-in (needs the axi CLIs, and blocks raw gh)
 SELECTED=""
 DRY_RUN=0
 NON_INTERACTIVE=0
 
-# Matt Pocock's skills are fetched from his public repo at install time —
-# not re-vendored here. Toggle on with --matt-pocock or in the menu.
-MP_REPO="https://github.com/mattpocock/skills.git"
-MP_SKILLS="caveman diagnose grill-me grill-with-docs improve-codebase-architecture setup-matt-pocock-skills tdd to-issues to-prd zoom-out"
+# Claude Code memory is project-scoped: ~/.claude/projects/<slugified-cwd>/memory/.
+# --memory installs into the project you run the installer from; override with
+# MEMORY_PROJECT=/path/to/repo ./install.sh --memory
+MEMORY_PROJECT="${MEMORY_PROJECT:-$PWD}"
 
 # ---------------------------------------------------------------------------
 # Output helpers
@@ -69,8 +69,9 @@ label_for() {
     hooks)      echo "hooks + settings wiring → ts-typecheck, precompact, rename-plan, env-guard" ;;
     statusline) echo "statusline           → context / cost monitor" ;;
     skills)     echo "bundled skills       → ~/.claude/skills" ;;
+    memory)     echo "example memories     → this project's memory dir (project-scoped)" ;;
+    axi)        echo "axi CLI wiring       → prefer-gh-axi guard + SessionStart briefings" ;;
     plugins)    echo "plugins I use        → merged into enabledPlugins" ;;
-    matt-pocock) echo "Matt Pocock skills   → clone mattpocock/skills (network, third-party)" ;;
   esac
 }
 
@@ -82,12 +83,15 @@ install.sh — install parts of this Claude Code setup into \$CLAUDE_HOME (defau
   ./install.sh --all            install everything
   ./install.sh --hooks --statusline
   ./install.sh --all --no-plugins
-  ./install.sh --matt-pocock     fetch Matt Pocock's skills from upstream
+  ./install.sh --memory          copy the example memories into THIS project
   ./install.sh --all --dry-run   show actions, change nothing
 
-Components: claude-md  hooks  statusline  skills  plugins  matt-pocock
-  matt-pocock clones github.com/mattpocock/skills (network, third-party).
-  It is opt-in: included by --all, but off by default in the interactive menu.
+Components: claude-md  hooks  statusline  skills  memory  axi  plugins
+  memory is project-scoped — it installs into the project you run it from.
+    Override with MEMORY_PROJECT=/path/to/repo.
+  axi wires the gh-axi guard (which BLOCKS raw \`gh\`) and the SessionStart
+    briefings. It needs the axi CLIs from MANIFEST.md, so it is opt-in:
+    included by --all, off by default in the interactive menu.
 Flags:      --<component>  --no-<component>  --all  -y/--yes  --dry-run  -h/--help
 EOF
   exit 0
@@ -104,14 +108,16 @@ parse_args() {
       --hooks)        sel_add hooks;      NON_INTERACTIVE=1 ;;
       --statusline)   sel_add statusline; NON_INTERACTIVE=1 ;;
       --skills)       sel_add skills;     NON_INTERACTIVE=1 ;;
+      --memory)       sel_add memory;     NON_INTERACTIVE=1 ;;
+      --axi)          sel_add axi;        NON_INTERACTIVE=1 ;;
       --plugins)      sel_add plugins;    NON_INTERACTIVE=1 ;;
-      --matt-pocock)  sel_add matt-pocock; NON_INTERACTIVE=1 ;;
       --no-claude-md)  sel_remove claude-md ;;
       --no-hooks)      sel_remove hooks ;;
       --no-statusline) sel_remove statusline ;;
       --no-skills)     sel_remove skills ;;
+      --no-memory)     sel_remove memory ;;
+      --no-axi)        sel_remove axi ;;
       --no-plugins)    sel_remove plugins ;;
-      --no-matt-pocock) sel_remove matt-pocock ;;
       --dry-run)      DRY_RUN=1 ;;
       -h|--help)      usage ;;
       *) die "unknown option: $arg (try --help)" ;;
@@ -123,7 +129,7 @@ parse_args() {
 # Interactive checklist
 # ---------------------------------------------------------------------------
 interactive_menu() {
-  SELECTED="$DEFAULT_COMPONENTS"   # local components on; matt-pocock off until toggled
+  SELECTED="$DEFAULT_COMPONENTS"   # local components on; axi off until toggled
   while true; do
     printf '\n%sSelect what to install%s  (type a number to toggle)\n' "$BOLD" "$RESET"
     i=1
@@ -263,45 +269,80 @@ install_skills() {
   step "installing bundled skills"
   for dir in "$SRC"/skills/*/; do
     [ -f "$dir/SKILL.md" ] || continue
-    copy_file "${dir%/}" "$CLAUDE_DIR/skills/$(basename "$dir")"
+    name="$(basename "$dir")"
+    # Replace, don't merge: `cp -R src dst` nests when dst already exists, so a
+    # second run would produce skills/<name>/<name>/. Clear the target first.
+    if [ "$DRY_RUN" = 0 ]; then rm -rf "$CLAUDE_DIR/skills/$name"; fi
+    copy_file "${dir%/}" "$CLAUDE_DIR/skills/$name"
   done
 }
 
 install_plugins() {
   step "enabling plugins"
   # User's existing choices win over ours on conflict.
-  merge_settings '.enabledPlugins = (($src.enabledPlugins // {}) + (.enabledPlugins // {}))'
+  merge_settings '
+    .enabledPlugins = (($src.enabledPlugins // {}) + (.enabledPlugins // {}))
+    | .extraKnownMarketplaces = (($src.extraKnownMarketplaces // {}) + (.extraKnownMarketplaces // {}))'
   warn "plugins come from the official marketplace — Claude Code installs them on next start."
 }
 
-install_matt_pocock() {
-  step "installing Matt Pocock skills from mattpocock/skills"
-  command -v git >/dev/null 2>&1 || die "git is required for the matt-pocock component."
+install_memory() {
+  step "installing example memories → this project's memory dir"
+  # Claude Code keys memory by working directory: every "/" in the absolute
+  # path becomes "-", so /Users/me/work/app → -Users-me-work-app.
+  slug="$(printf '%s' "$MEMORY_PROJECT" | sed 's|/|-|g')"
+  dest="$CLAUDE_DIR/projects/$slug/memory"
+
   if [ "$DRY_RUN" = 1 ]; then
-    printf '%s[dry-run]%s clone %s, copy [%s] → %s/skills/\n' \
-      "$DIM" "$RESET" "$MP_REPO" "$MP_SKILLS" "$CLAUDE_DIR"
+    printf '%s[dry-run]%s memory dir for %s → %s\n' "$DIM" "$RESET" "$MEMORY_PROJECT" "$dest"
+  else
+    mkdir -p "$dest"
+  fi
+
+  # Never clobber a memory the user already wrote under the same name.
+  for f in "$SRC"/memory/*.md; do
+    base="$(basename "$f")"
+    [ "$base" = "MEMORY.md" ] && continue
+    if [ -f "$dest/$base" ]; then
+      warn "kept existing $base (not overwritten)"
+      continue
+    fi
+    copy_file "$f" "$dest/$base"
+  done
+
+  # MEMORY.md is the index and is usually already populated — append our entries
+  # under a marker we can replace on the next run, same as CLAUDE.md.
+  idx="$dest/MEMORY.md"
+  if [ "$DRY_RUN" = 1 ]; then
+    printf '%s[dry-run]%s add the managed block to %s\n' "$DIM" "$RESET" "$idx"
     return 0
   fi
-  tmp="$(mktemp -d)"
-  if ! git clone --depth 1 --quiet "$MP_REPO" "$tmp/repo" 2>/dev/null; then
-    rm -rf "$tmp"; die "could not clone $MP_REPO (offline?)"
+  tmp="$(mktemp)"
+  if [ -f "$idx" ]; then
+    backup "$idx"
+    sed "\|^${MARKER_START}\$|,\|^${MARKER_END}\$|d" "$idx" > "$tmp"
+  else
+    printf '# Memory\n' > "$tmp"
   fi
-  mkdir -p "$CLAUDE_DIR/skills"
-  n=0
-  for name in $MP_SKILLS; do
-    # Resolve each skill folder by name so upstream re-organisation doesn't break us.
-    dir="$(find "$tmp/repo" -type d -name "$name" 2>/dev/null | head -1)"
-    if [ -n "$dir" ] && [ -f "$dir/SKILL.md" ]; then
-      rm -rf "$CLAUDE_DIR/skills/$name"
-      cp -R "$dir" "$CLAUDE_DIR/skills/$name"
-      n=$((n+1))
-    else
-      warn "skipped $name (not found upstream)"
-    fi
-  done
-  rm -rf "$tmp"
-  step "installed $n Matt Pocock skill(s) → ~/.claude/skills/"
-  warn "these are third-party skills by Matt Pocock (github.com/mattpocock/skills) — see his LICENSE."
+  {
+    cat "$tmp"
+    printf '\n%s\n' "$MARKER_START"
+    sed -n '/^## /,$p' "$SRC/memory/MEMORY.md"
+    printf '%s\n' "$MARKER_END"
+  } > "$idx"
+  rm -f "$tmp"
+  step "memory installed → $dest"
+}
+
+install_axi() {
+  step "wiring the axi CLIs (gh-axi guard + SessionStart briefings)"
+  copy_file "$SRC/hooks/prefer-gh-axi.py" "$CLAUDE_DIR/hooks/prefer-gh-axi.py" x
+  merge_settings '
+    reduce ($src.axiHooks | keys[]) as $ev (
+      .;
+      .hooks[$ev] = (((.hooks[$ev]) // []) + ($src.axiHooks[$ev] // []) | unique_by(tojson))
+    )'
+  warn "the gh-axi guard BLOCKS raw \`gh\` calls — install the axi CLIs first (see MANIFEST.md)."
 }
 
 # ---------------------------------------------------------------------------
@@ -331,8 +372,9 @@ main() {
       hooks)      install_hooks ;;
       statusline) install_statusline ;;
       skills)     install_skills ;;
+      memory)     install_memory ;;
+      axi)        install_axi ;;
       plugins)    install_plugins ;;
-      matt-pocock) install_matt_pocock ;;
     esac
   done
 

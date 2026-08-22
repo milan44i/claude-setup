@@ -12,6 +12,5 @@ Every PR MUST use the structure of the repo's `.github/PULL_REQUEST_TEMPLATE.md`
 **How to apply:**
 - Before calling `gh pr create`, `Read` the repo's `.github/PULL_REQUEST_TEMPLATE.md` and use it as the body skeleton.
 - Keep the ticket reference as the first line of the body (per [[feedback-pr-no-files-changed]] and whatever `[TICKET-ID]` convention the repo uses), then the template sections.
-- Fill checklists honestly — mark only items actually done. Leave any "AI review" section with a placeholder if no review has run yet.
-- Do not omit headings even if a section is N/A — write "N/A" instead.
-- Combine with [[feedback-no-auto-commit]]: still need explicit per-prompt authorization to push / open PRs.
+- Fill checklists honestly - mark only items actually done. Leave any "AI review" section with a placeholder if no review has run yet.
+- Do not omit headings even if a section is N/A - write "N/A" instead.

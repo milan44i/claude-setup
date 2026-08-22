@@ -6,3 +6,6 @@ claude-setup-summary.md
 
 # Installer backups, if anyone runs it from inside the repo
 *.bak.*
+
+# Local Claude Code state, never publish
+.claude/settings.local.json

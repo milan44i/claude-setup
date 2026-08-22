@@ -1,53 +1,50 @@
 # skills/
 
-## Mine
+Everything here is mine, and everything here runs. Skills I use but did not write are listed
+in [`MANIFEST.md`](../MANIFEST.md) with an install command instead of a copy.
+
+`./install.sh --skills` installs all of them into `~/.claude/skills/`. They are grouped the
+way [WORKFLOW.md](../WORKFLOW.md) is: the team-repo chain, the personal-business pipeline, and
+the two that serve both.
+
+---
+
+## Core work - the ticket-to-merged chain
+
+These run against team repos: ticket, branch, PR, review. None of them assumes my employer or
+my repos - base branch comes from the remote, branch naming from the repo's existing branches,
+build and test commands from the repo's own `CLAUDE.md`/`AGENTS.md` or its CI log, PR titles
+from the repo's merged-PR history. The tracker resolves to Jira or GitHub Issues, with a
+ticketless fallback.
 
 | Skill | What it does |
 |---|---|
-| [`fix-pr-comments`](fix-pr-comments/SKILL.md) | Fetches PR review comments with `gh`, classifies each as **FIX** (bugs, security, broken contracts, missing tests) or **SKIP** (taste, questions, out-of-scope), fixes the legitimate ones with minimal diffs, and prints a resolution summary. Errs toward SKIP when uncertain. |
-| [`create-pr`](create-pr/SKILL.md) | Commits, pushes, and opens a PR end to end — title follows the repo's own PR-title convention (inferred from merged PRs), body from the repo's PR template. Invoking it **is** the commit/push authorization, scoped to that run only. |
-| [`fix-pr-checks`](fix-pr-checks/SKILL.md) | Fixes a PR's failing build / unit-test / lint checks: reproduces each locally (mirroring the CI log's command), fixes the root cause, verifies green, pushes once. Current branch in place, or a PR number/URL in a throwaway worktree. Reports (doesn't touch) failures it can't reproduce locally. |
-| [`implement-ticket`](implement-ticket/SKILL.md) | Implements a ticket (Jira or GitHub issue) from its description on a ticket-named branch following the repo's branch-naming convention (`--worktree` for isolation). Treats the ticket as the spec, runs affected tests, and **stops before the PR** — review, then `/create-pr`. |
-| [`resolve-conflicts`](resolve-conflicts/SKILL.md) | Merges the latest default branch and resolves conflicts — auto on clear ones, asks (with a recommendation) on ambiguous ones. Runs affected tests, commits the merge locally, stops before push. |
-| [`ticket-code-consistency`](ticket-code-consistency/SKILL.md) | Updates a ticket's description (Jira or GitHub issue) to match what the branch's code actually does (direction is always code → ticket). Edits the ticket directly. |
+| [`to-jira`](to-jira/SKILL.md) | Writes the conclusions of a grilling session into the tracker - rewriting one ticket, creating one, or creating an epic with independently-mergeable child slices. Every ticket it writes has to pre-answer what `implement-ticket` would otherwise stop and ask. |
+| [`implement-ticket`](implement-ticket/SKILL.md) | Builds a ticket from its description on a ticket-named branch, in an isolated worktree by default. Treats the ticket as the spec, runs the affected tests, and stops before the PR. |
+| [`create-pr`](create-pr/SKILL.md) | Commits, pushes and opens the PR end to end - title from the repo's own convention, body from its PR template. Invoking it *is* the commit/push authorization, scoped to that run. |
+| [`fix-pr-checks`](fix-pr-checks/SKILL.md) | Reproduces each failing check locally with the command from the CI log, fixes the root cause, verifies green, pushes once. Reports (does not touch) what it cannot reproduce locally. |
+| [`fix-pr-comments`](fix-pr-comments/SKILL.md) | Classifies each review comment FIX or SKIP - bugs, security, broken contracts and missing tests get fixed; taste and out-of-scope do not - then fixes the legitimate ones with minimal diffs. Errs toward SKIP. |
+| [`resolve-conflicts`](resolve-conflicts/SKILL.md) | Merges the moved base branch, auto-resolving the clear conflicts and asking (with a recommendation) on the ambiguous ones. Runs the affected tests before the merge commit lands. |
+| [`ticket-code-consistency`](ticket-code-consistency/SKILL.md) | Rewrites the ticket to match what the branch actually built. The closing direction - code → ticket - so the ticket does not quietly become a lie. |
+| [`grilling`](grilling/SKILL.md) | Interviews you about a plan as a design tree, asking a full frontier of questions per round and dispatching sub-agents for any fact it could look up itself. Grills the plan against the repo's own glossary and ADRs. **A fork of `mattpocock-skills:grilling` v1.2.3** - the domain section and the `to-jira` handoff are the additions; kept diffable against upstream. |
+| [`grill-with-docs`](grill-with-docs/SKILL.md) | The entry point that runs `grilling` together with `domain-modeling`, so decisions land in the context docs and ADRs as they crystallise rather than in a write-up pass that never happens. Also a fork of the upstream one-liner. |
 
-Install them with `./install.sh --skills` (copies every skill here into `~/.claude/skills/`).
+## Personal - the demo-selling pipeline
 
-The PR/ticket skills together form a loop: `implement-ticket` → review → `create-pr` →
-`fix-pr-checks` / `fix-pr-comments` → `resolve-conflicts` when the base branch moves →
-`ticket-code-consistency` to leave the ticket honest. They adapt to the repo they run in
-rather than assuming mine: the base branch is detected from the remote, branch names
-mirror the repo's existing branches, build/test/lint commands are mirrored from the CI
-log or the repo's own scripts, PR titles follow the repo's merged-PR history, and tickets
-resolve to Jira (Atlassian MCP) or GitHub Issues (`gh`) — with a ticketless fallback when
-there's no tracker at all.
+A real small business: find local businesses without a decent website, build one, polish it,
+pitch it. Twelve `biz-*` verticals plus restaurants, roughly 147 generated client sites on
+Cloudflare Pages. These are published as-is because the method is the interesting part.
 
-## Matt Pocock's skills (`./install.sh --matt-pocock`)
+| Skill | What it does |
+|---|---|
+| [`biz-scout`](biz-scout/SKILL.md) / [`restaurant-scout`](restaurant-scout/SKILL.md) | Find and qualify candidates in a vertical, verify every fact and URL, and write a dossier the build lane can work from without asking anything. |
+| [`biz-site`](biz-site/SKILL.md) / [`restaurant-site`](restaurant-site/SKILL.md) | Build a bespoke themed demo from the dossier on top of the shared engine, deploy it, QA it live, and sync the theme back to the engine through a per-slug worktree and a PR. |
+| [`polish-design`](polish-design/SKILL.md) | Page-by-page design pass on a deployed site before an owner sees it: defects always, bounded beautification within the site's existing design DNA, never the DNA itself. |
+| [`biz-pitch`](biz-pitch/SKILL.md) / [`restaurant-pitch`](restaurant-pitch/SKILL.md) | Draft the outreach message per lead and put it on the sending board. A demo is not done until it is reachable from there. |
+| [`biz-kokpit`](biz-kokpit/SKILL.md) | Read-only funnel view across every vertical: candidates, built, offered, outcome, plus what to do next. A thin wrapper over the funnel CLI - it is forbidden from parsing the state files by hand. |
+| [`infra`](infra/SKILL.md) | The account-level map and runbook everything above deploys onto: the Pages branch-deploy model, the Workers side, domains and email, cap management, and the decision records behind each. Its own freshness rule: never trust a count written in a file, run the command. |
 
-I don't re-vendor other people's skills. The `--matt-pocock` component clones
-[**github.com/mattpocock/skills**](https://github.com/mattpocock/skills) at install time and
-copies these into `~/.claude/skills/` — so the code stays attributed to its author and you
-get updates by re-running. How they fit a workflow:
+## Both halves
 
-- **`to-prd` / `to-issues`** — turn a fleshed-out idea into a PRD, then into grabbable issues.
-- **`grill-me` / `grill-with-docs`** — adversarial interview that walks every branch of a
-  design decision before committing. (This repo was shaped with `grill-me`.)
-- **`tdd`** — red-green-refactor discipline for features and fixes.
-- **`diagnose`** — reproduce → minimise → hypothesise → instrument → fix, not guess-and-check.
-- **`improve-codebase-architecture` / `zoom-out`** — step back from line-level work to find
-  structural and deepening opportunities.
-- **`caveman`** — ultra-compressed output mode when you want to save tokens.
-- **`setup-matt-pocock-skills`** — *not an installer*: a per-repo scaffolder you run **inside
-  Claude Code** after installing the above, to tell those skills your issue tracker, triage
-  labels, and domain-doc layout.
-
-It's opt-in: `--all` includes it, but the interactive menu leaves it off by default because
-it reaches out to the network.
-
-## Also worth knowing
-
-`./install.sh --plugins` enables the official **`superpowers`** plugin
-(`superpowers@claude-plugins-official`), a *separate* collection with its own skills
-(`brainstorming`, `test-driven-development`, `systematic-debugging`, `writing-plans`,
-`using-git-worktrees`, …). And [`find-skills`](https://github.com/vercel-labs/skills) (from
-vercel-labs) is a handy way to discover and install more.
+`gh-axi`, `chrome-devtools-axi`, `lavish`, `no-mistakes`, `find-skills`, `grill-me` are used
+constantly by both loops but are not mine - see [`MANIFEST.md`](../MANIFEST.md).

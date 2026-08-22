@@ -10,5 +10,5 @@ metadata:
 
 **How to apply:**
 - PR body should cover *what changed and why* (Summary) and *how to verify* (Test plan), not which files.
-- Same applies to Jira ticket descriptions when summarizing the implementation — skip the files list.
+- Same applies to Jira ticket descriptions when summarizing the implementation - skip the files list.
 - File-level call-outs are still fine when they carry information the diff doesn't (e.g. "legacy modal kept in sync"), but don't enumerate every modified path as a checklist.
