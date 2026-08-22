@@ -7,7 +7,7 @@ description: Page-by-page design polish for one deployed restaurant site - fixes
 
 Design-quality pass for Milan's restaurant fleet. Sibling of `restaurant-site` (builds) and
 `restaurant-pitch` (sells): this skill takes an already-deployed site and makes every page
-look professional before an owner sees it. Born from the 2026-07-13 Thyme pass, where five
+look professional before an owner sees it. Born from the 2026-07-13 fleet pass, where five
 "finished" sites carried 35+ really-broken style overrides plus assorted visual defects.
 
 **Path root: everything lives under `~/work/projekti/restorani/`.** One site per invocation
@@ -20,9 +20,10 @@ Resolve `<slug>` against PIPELINE.md (demo URL, offer status) and the local repo
 `~/work/projekti/restorani/<slug>` (clone from `milan44i/<slug>` if missing; `pnpm install` if
 node_modules is pruned).
 
-- **Frozen repos: refuse.** The chooser-era four (`beogradnavatri`, `stari-pingvin`,
-  `stari-nikola`, `restoran-cezar`) and any row whose Napomena marks it ZAMRZNUT. Say why:
-  frozen repos predate the current engine and get regenerated as bespoke builds instead.
+- **Frozen repos: refuse.** The chooser-era four and any other row whose `Napomena` in
+  PIPELINE.md marks it ZAMRZNUT - resolve them from PIPELINE.md, never from a list here.
+  Say why: frozen repos predate the current engine and get regenerated as bespoke
+  builds instead.
 - Pitched-but-unanswered demos are fair game - the DNA does not change, so the owner sees
   the same design, only more correct. A broken site under evaluation costs more than a deploy.
 - Sold sites (indexable, custom domain) are allowed - normal retainer work - but the report

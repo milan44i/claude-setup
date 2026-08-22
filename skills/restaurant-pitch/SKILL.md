@@ -46,7 +46,7 @@ for a demo, check it is on the board; if missing, refresh the board from
   `follow-up poslat YYYY-MM-DD` to that row's Napomena (the exact format the ladder parses).
 
 Match `<slug|ime>` against PIPELINE.md rows case-insensitively on Ime or the demo-URL slug
-(e.g. `kesten` -> `restoran-kesten`). Ambiguous or no match -> stop and ask, do not guess.
+(e.g. `<ime>` -> `restoran-<ime>`). Ambiguous or no match -> stop and ask, do not guess.
 
 ## Draft flow
 
@@ -59,17 +59,17 @@ Match `<slug|ime>` against PIPELINE.md rows case-insensitively on Ime or the dem
      block - draft anyway and flag it in the report.
 2. **Build** the email per target:
    - **To:** the recipient email.
-   - **From:** Milan's Gmail (mln6stankovic@gmail.com) - the connector's authenticated account.
+   - **From:** Milan's Gmail (`<your-gmail>`) - the connector's authenticated account.
    - **Subject:** `Novi website za <Ime restorana>`.
    - **Body:** the fixed template from `~/work/projekti/restorani/pitch-template.md`, with BOTH
-     `restoran-kesten.pages.dev` URLs replaced by this target's demo base URL (the second gets
+     of the template's placeholder demo URLs replaced by this target's demo base URL (the second gets
      `/ponuda/` appended). Verbatim otherwise - no rewording, no price in the body, proper
      Serbian diacritics (č/ć/š/ž/đ) preserved.
    - **Links:** always send as `htmlBody` with the two demo URLs as explicit
      `<a href="...">...</a>` tags (paragraphs/`<br>` for line breaks) - never as a plain-text
      `body` with bare URLs. The connector's `create_draft`/send tools rewrite bare URLs in a
      plain body into a Gmail click-tracking redirect (`google.com/url?q=...&ust=...`) baked
-     into the stored message. This bit Milan once (2026-07-06, Sent Andrea demo) - do not
+     into the stored message. This bit Milan once (2026-07-06, on a live demo send) - do not
      repeat it.
 3. **Print** To / Subject / full body for every target before drafting (for the record, not as
    a prompt). For `--pending`, also list the restaurants skipped for missing email.

@@ -87,7 +87,7 @@ older freeform mentions).
      anyway and flag it in the report.
 2. **Build** the email per target:
    - **To:** the recipient email.
-   - **From:** Milan's Gmail (mln6stankovic@gmail.com) - the connector's authenticated account.
+   - **From:** Milan's Gmail (`<your-gmail>`) - the connector's authenticated account.
    - **Subject:** `Novi website za <Ime>`.
    - **Body:** the fixed template from that vertical's `~/work/projekti/<dir>/pitch-template.md`
      (variant-picked per below), with BOTH template URLs replaced by this target's demo base

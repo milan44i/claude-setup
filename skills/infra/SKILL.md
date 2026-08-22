@@ -16,7 +16,7 @@ command that answers the question (see Live facts).
 
 ## 1. Account map
 
-- One Cloudflare account, wrangler **OAuth-logged-in on this machine** (mln6stankovic@gmail.com).
+- One Cloudflare account, wrangler **OAuth-logged-in on this machine** (`<your-gmail>`).
   There is no CF API token secret anywhere - all deploys are local wrangler, no CI deploys exist.
 - **Pages cap: 100 projects per account** (hard, "not routinely increased"). Hit on
   2026-08-15; that event produced the branch-deploy model below.
@@ -50,14 +50,14 @@ command that answers the question (see Live facts).
 ## 2. Workers side
 
 - **`kartice-ponuda`** (Worker, assets-only SPA from `~/work/projekti/kartice-ponuda`): serves
-  the three SENT cafe pitches - Popy (`/popy`), Holy Beans (`/holy-beans`), Greenet
-  (`/greenet`) plus `/demo/*` - as routes on one Worker. **These URLs are frozen** (sent
+  the three SENT cafe pitches - one route per cafe (`/<cafe-slug>`, names in the repo's
+  router) plus `/demo/*` - as routes on one Worker. **These URLs are frozen** (sent
   2026-08). Future cafes deploy as branches on the `kartice-ponuda` Pages project instead:
   `<cafe>.kartice-ponuda.pages.dev`. Deploy conventions: repo README.
 - **`kartica-44`** - the SOLD production stack that kartice-ponuda demos sell deployments
   of: Worker (SPA + `/api/*`), D1 `kartica-db`, daily cron `0 7 * * *`, transactional
-  email via `info@kartica.milan44.dev` (EMAIL_MODE=live), customer-facing domain
-  `kartica.44massagecenter.rs`. A kartice go-live = a fresh deployment of this stack for
+  email via `info@kartica.<your-domain>` (EMAIL_MODE=live), customer-facing domain
+  `kartica.<client-domain>`. A kartice go-live = a fresh deployment of this stack for
   the new cafe (own Worker name, own D1, own sender address). Deep detail: `~/work/projekti/44-kartica`.
 - Out of scope for this skill: `sitescore`/seo-checker and anything in the day-job workspace (`~/work/<employer>`) (`sajt-analiza` IS in scope - see Account map).
 
@@ -94,12 +94,11 @@ command that answers the question (see Live facts).
     recent run per repo, then 404s on older ones - matches "log data already purged",
     not worth fighting with retries.
   - 12 repos had leftover `.github/workflows/` as of 2026-08-17 (cleaned): 7 client
-    demos (`abc-restoran`, `bon-apetit`, `butkica`, `gelato-bar`, `gvero`,
-    `restoran-cezar`, `restoran-z` - Actions also disabled via
+    demos (workflows removed, and Actions also disabled via
     `PUT actions/permissions {enabled:false}`) plus 5 personal/legacy repos
-    (`awesome-pwa`, `gamescore`, `seo-checker`, `trag-fondacija-back-main`,
-    `trag-fondacija-front-develop` - workflows removed, Actions left enabled since
-    they're not client repos). `biz-engine`, `restaurant-engine`, `funnel` were clean.
+    (workflows removed, Actions left enabled since they're not client repos).
+    The engine repos and `funnel` were clean. Re-derive the current list from the
+    account rather than from this note - run the sweep, don't trust these counts.
 
 ## 4. Domains & email
 
@@ -108,9 +107,9 @@ command that answers the question (see Live facts).
   so the domain is legally theirs (odluka 2026-08-16; .rs goes through RNIDS-accredited
   registrars, ~2500 RSD/yr). Domain points at the client's dedicated Pages project.
   Commercial acceptance playbook: `~/work/projekti/terenska-prodaja/ONBOARDING.md`.
-- **`milan44.dev`** is Milan's own domain - used for email senders
-  (`info@kartica.milan44.dev` via Cloudflare/Resend) and the odd demo alias
-  (`abc-restoran` → `abc.milan44.dev` is the one Pages custom domain on a demo).
+- **`<your-domain>`** is Milan's own domain - used for email senders
+  (`info@kartica.<your-domain>` via Cloudflare/Resend) and the odd demo alias
+  (exactly one demo carries a Pages custom domain on a subdomain of it).
 - 44-kartica memory notes a Resend key + custom-domain work still pending for that app.
 
 ## 5. Runbook (cross-cutting ops - nobody else owns these)

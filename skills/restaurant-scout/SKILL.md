@@ -36,7 +36,7 @@ While reading CANDIDATES.md: any row - whatever its status - whose name now appe
 
 ### 2. Research fan-out (subagents)
 
-The built fleet is concentrated in Novi Beograd/Zemun (see PIPELINE.md) - counter that by splitting the search across opštine instead of letting every subagent independently rediscover the same five famous places. A reasonable split: {Vračar, Zvezdara}, {Stari Grad, Dorćol, Savski Venac}, {Voždovac, Čukarica, Rakovica}, {Novi Beograd, Zemun - lowest priority, already saturated}. Hand every subagent the exclude set up front so search budget isn't wasted re-finding Kesten or Dren.
+The built fleet is concentrated in Novi Beograd/Zemun (see PIPELINE.md) - counter that by splitting the search across opštine instead of letting every subagent independently rediscover the same five famous places. A reasonable split: {Vračar, Zvezdara}, {Stari Grad, Dorćol, Savski Venac}, {Voždovac, Čukarica, Rakovica}, {Novi Beograd, Zemun - lowest priority, already saturated}. Hand every subagent the exclude set - every venue already in PIPELINE.md and CANDIDATES.md - up front, so search budget isn't wasted rediscovering the built fleet.
 
 If Milan passed a type (§Invocation), every subagent additionally filters for that segment - a "fine dining" run should come back with fine dining across all four slices, not a mixed bag.
 
