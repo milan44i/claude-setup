@@ -247,7 +247,7 @@ install_hooks() {
   step "installing hooks + settings wiring"
   copy_file "$SRC/hooks/ts-typecheck.sh" "$CLAUDE_DIR/hooks/ts-typecheck.sh" x
   copy_file "$SRC/hooks/precompact.py"   "$CLAUDE_DIR/hooks/precompact.py"
-  copy_file "$SRC/hooks/rename-plan.py"  "$CLAUDE_DIR/hooks/rename-plan.py"
+  copy_file "$SRC/hooks/rename-plan.py"  "$CLAUDE_DIR/hooks/rename-plan.py" x
   # Merge .hooks from machine settings, deduped per event by serialized group.
   # Also set plansDirectory (rename-plan looks there) unless the user has one.
   merge_settings '

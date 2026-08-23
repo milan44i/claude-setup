@@ -36,6 +36,12 @@ Two traps it has already hit: `cp -R src dst` nests when `dst` exists (skills gr
 `<name>/<name>/` on the second run), and `memory/` is **project-scoped** under
 `~/.claude/projects/<slugified-cwd>/memory/`, not global.
 
+A hook file in `hooks/` does nothing until it is wired. `settings/machine.settings.json` is
+the only place that wiring lives: `install_hooks()` merges its `.hooks` into the target
+settings deduped per event by `unique_by(tojson)`, and `install_axi()` merges the separate
+`.axiHooks` block (opt-in, because the `prefer-gh-axi` guard blocks raw `gh`). Adding a hook
+means adding both the file and its group there.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
