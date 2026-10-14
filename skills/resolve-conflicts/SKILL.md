@@ -1,44 +1,92 @@
 ---
 name: resolve-conflicts
-description: Merge the latest default branch into the current branch and resolve the conflicts. Use when a branch has merge conflicts after the base branch moved, or when asked to resolve conflicts or update a branch with master/main. Auto-resolves clear conflicts, asks on ambiguous ones, stops before push.
+description: Merge the latest master into a branch and resolve the conflicts. Use when a branch has merge conflicts after master moved, or when asked to resolve conflicts or update a branch with master. No argument = the current branch, resolved in place; pass a PR number, PR URL, or branch name to resolve that branch in an isolated git worktree. Auto-resolves clear conflicts, asks on ambiguous ones, then commits and pushes the merge.
 allowed-tools: Bash, Read, Edit, Grep, Glob
+argument-hint: "[pr-number-or-url-or-branch]"
 ---
 
 # Resolve Conflicts
 
-Bring the current branch up to date with the repo's default branch and resolve the resulting conflicts. This skill **merges — it never rebases**. **Stop before pushing.**
+Bring a branch up to date with `master` and resolve the resulting conflicts. **Merge, not rebase** (repo convention). The final push happens without asking, as everywhere else in this setup; only failing verification stops it.
 
-## Step 1 — Merge the latest default branch
+**Always resolve. Never `git merge --abort`.** Backing out leaves the branch exactly as stuck as it was.
+
+## Step 1 — Determine the target branch and mode
+
+`$ARGUMENTS` may be empty, a PR number, a PR URL, or a branch name.
+
+- **No argument** → the **current branch**, resolved **in place** (no worktree).
+  - **If the current branch is `master`** (or `main`): do **not** proceed. There is nothing to merge into. **Stop and ask the user which PR** (or branch) to resolve, then re-run with that as the argument.
+- **Argument given** (PR number, PR URL, or branch name) → work in an **isolated git worktree** so the current workspace is untouched:
+  1. Create the worktree (use the **using-git-worktrees** skill / native worktree tooling).
+  2. Check the target out into it:
+     - PR number or URL → `npx gh-axi pr checkout <pr>` (raw `gh pr checkout <pr>` as fallback)
+     - branch name → check out / track that branch in the worktree
+  3. Do all the work there. **Remove the worktree when done** (Step 7).
+
+All remaining steps run in the target's working directory (the current dir for in-place mode, the worktree for argument mode).
+
+## Step 2 — Merge latest master
 
 ```bash
-BASE=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
-[ -n "$BASE" ] || BASE=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)
 git fetch origin
-git merge "origin/$BASE"
+git merge origin/master
 ```
 
-## Step 2 — Resolve
+## Step 3 — Recover the intent behind each side
 
-For each conflicted file:
+A conflict is two changes that disagree. You cannot resolve it correctly from the hunk alone — the hunk shows *what* each side did, never *why*. Before touching a single conflicted file, find the primary source for each side:
 
-- **Clear / unambiguous** (non-overlapping additions, obvious formatting, independent intent on each side): resolve automatically, keeping both sides' intent correct.
-- **Ambiguous** (overlapping logic changes, semantic conflicts, unclear which side should win): **stop and ask the user**, showing the conflicting hunks and your recommendation. Do not guess.
+```bash
+git log --merge -p -- <file>              # the commits from both sides that touch this file
+git log --format='%h %an %s' -1 <sha>     # the commit subject/body for one side
+```
 
-Never blindly accept one side. Read enough surrounding context to resolve correctly.
+For each conflicted file, work out:
 
-## Step 3 — Verify
+- **The commit** that introduced each side, and what its message claims it was doing.
+- **The PR** that carried it — `npx gh-axi search prs "<sha>"` (or raw `gh pr list --search <sha>` as fallback; gh-axi's `pr list` has no `--search` flag), then read its description and review discussion.
+- **The ticket** the PR references (`[ABC-123]` in the title, or a Jira link in the body) — fetch it when the PR description is thin. The ticket carries the requirement; the diff only carries one implementation of it.
 
-After all conflicts are resolved and staged, run lint and the tests affected by the merged + conflicted files, using the repo's own scripts (`package.json` scripts plus the lockfile, a `Makefile`, or the equivalent for the repo's language; in a monorepo, run them from the affected packages).
+Skip the archaeology only for conflicts that are provably mechanical: import ordering, lockfile regeneration, formatter churn, generated files.
+
+## Step 4 — Resolve
+
+For each conflicted file, resolve toward the two intents you just recovered, not toward the text:
+
+- **Both intents survivable** → keep both. This is the common case and includes most "overlapping" hunks: the two changes usually want different things from the same lines.
+- **Genuinely incompatible** → keep the one that matches the stated goal of this merge (normally: `master` is the new baseline, the branch's own feature is what you are preserving), and note the trade-off in the summary so the discarded intent is not lost silently.
+- **Still unclear after reading the commits, PRs, and tickets** → **stop and ask the user**, showing the hunks, what each side was trying to do, and your recommendation.
+
+Never blindly accept one side, and never invent behaviour that was on neither side. A resolution that compiles but drops one side's requirement is a worse outcome than asking.
+
+## Step 5 — Verify
+
+After all conflicts are resolved and staged, run lint and the tests affected by the merged + conflicted files, using the repo's own commands — take them from the repo's `CLAUDE.md` / `AGENTS.md`, never from memory (note which subdirectories are separate packages you must `cd` into). If nothing is documented, infer from the build files (`package.json` scripts, `build.sbt`, `Makefile`). Use check-mode lint, never a `:fix` variant — an auto-fixer can never fail the gate.
 
 Report results. If tests fail because of the merge, fix them or surface them.
 
-## Step 4 — Commit the merge locally
+## Step 6 — Commit the merge locally
 
 ```bash
 git add -A
 git commit --no-edit     # keep the default merge commit message
 ```
 
-## Step 5 — Stop
+## Step 7 — Push
 
-Summarize the conflicts resolved (and any you asked about). **Do not push.** Tell the user to review; they can then push or run `/create-pr`.
+Push the merge to the branch's remote:
+
+```bash
+git push
+```
+
+Only push if Step 5 verification passed. If lint or tests failed because of the merge and you couldn't fix them, **stop and surface the failures instead of pushing.**
+
+## Step 8 — Clean up (worktree mode only)
+
+If a worktree was created in Step 1, **remove it** now (ExitWorktree with removal, or `git worktree remove <path>`). Return to the original working directory.
+
+## Step 9 — Summarize
+
+Summarize the conflicts resolved, the intent recovered for each side, any trade-off where one intent had to be dropped, and any conflict you asked about. Confirm the merge was pushed. In worktree mode, note which branch was updated and that the worktree was cleaned up.

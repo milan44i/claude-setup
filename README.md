@@ -131,7 +131,7 @@ only the keys it owns, with your existing values winning on conflict.
 
 ### Skills → `skills/` and `MANIFEST.md`
 
-Eighteen skills of mine, split by the workflow they belong to - see
+Twenty-two skills of mine, split by the workflow they belong to - see
 [`skills/README.md`](skills/README.md). Everything I use but did not write is in
 [`MANIFEST.md`](MANIFEST.md) instead: the axi CLIs, Cloudflare's platform skills, the official
 plugins, `firstmate`, and a couple of honorable mentions.
@@ -150,7 +150,7 @@ plugins, `firstmate`, and a couple of honorable mentions.
 | `scripts/` | `context-monitor.py` statusline + a minimal alternative |
 | `memory/` | `MEMORY.md` index + example typed memories (project-scoped installer) |
 | `settings/machine.settings.json` | Hook/statusline/plugin wiring (no permissions, no personal prefs) |
-| `skills/` | The eighteen skills I wrote |
+| `skills/` | The twenty-two skills I wrote |
 
 ## License
 
