@@ -26,9 +26,9 @@ git branch --show-current
 
 - **On `master`**: this work needs its own branch. Determine the ticket id (from `$ARGUMENTS`, the conversation, or ask the user), then create the branch with the **lowercased** id:
     ```bash
-    git checkout -b <ticketId>     # e.g. datap-5585, mfe-7799
+    git checkout -b <ticketId>     # e.g. abc-123
     ```
-- **Already on a branch**: use it as-is. Derive the ticket id from the branch name, **uppercased** (`datap-5585` → `DATAP-5585`).
+- **Already on a branch**: use it as-is. Derive the ticket id from the branch name, **uppercased** (`abc-123` → `ABC-123`).
 - If `no-jira` is set, or no ticket id can be determined, treat this as a no-jira PR.
 
 **Establish whose changes are in the tree.** Step 3 needs this - unrelated WIP can be sitting in the tree alongside this work, and it must not be swept into the commit. Decide it from how you were entered:
@@ -42,7 +42,7 @@ If you cannot tell which side of that line a dirty path falls on, list the ambig
 
 Fetch the ticket via the Atlassian MCP (`getJiraIssue`, fields `summary,description`). The summary drives the title; **keep the description** — Step 6 compares it against the diff to detect divergence.
 
-**Strip any leading bracketed prefix** from the summary (e.g. `[Portal] `, `[BE] `).
+**Strip any leading bracketed prefix** from the summary (e.g. `[FE] `, `[BE] `).
 
 Title rule (**hard requirement**):
 
@@ -50,8 +50,8 @@ Title rule (**hard requirement**):
 [<TICKET-ID>] <ticket summary, leading [..] prefix stripped>
 ```
 
-Example: ticket `DATAP-5755` titled _"[Portal] Add Publish action (update flow) to Job Configuration Export dialog"_ →
-`[DATAP-5755] Add Publish action (update flow) to Job Configuration Export dialog`.
+Example: ticket `ABC-123` titled _"[FE] Add an export button to the reports page"_ →
+`[ABC-123] Add an export button to the reports page`.
 
 For a **no-jira** PR, the title is `[NO-JIRA] <concise title derived from the diff>`.
 
@@ -126,27 +126,11 @@ Only if `gh-axi` is unavailable or the call itself fails, fall back to the raw G
 
 **When not:** refactors, config, tests, docs and internal tooling. Add no images and never invent a visual.
 
-**Capture:** real screenshots only. Claude in Chrome drives the page in the captain's Chrome: local dev, or a custom image deployed with `deploy-custom-image`. Take screen captures with computer use so the DevTools panels (Network, Performance) show; the extension's own screenshot captures only the tab. The captain opens DevTools once per tab: computer use has read-only access to browsers, and the extension cannot reach the browser chrome. Use a matched pair - same filter, same cache setting - cropped to the relevant area, with no personal data or tokens in frame. Narrow a network filter to what the PR changed (e.g. `&raw` shows only AppIcon raw-SVG imports). Only when a real capture is impossible, use a card rendered from measured data, labelled with where it was measured.
+**Capture:** real screenshots only. Claude in Chrome drives the page in the captain's Chrome: local dev, or a deployed preview of the branch. Take screen captures with computer use so the DevTools panels (Network, Performance) show; the extension's own screenshot captures only the tab. The captain opens DevTools once per tab: computer use has read-only access to browsers, and the extension cannot reach the browser chrome. Use a matched pair - same filter, same cache setting - cropped to the relevant area, with no personal data or tokens in frame. Narrow a network filter to what the PR changed (e.g. only the requests for the assets it touched). Only when a real capture is impossible, use a card rendered from measured data, labelled with where it was measured.
 
 **Attach:** GitHub has no API for attaching images to a PR body. After `pr create`, Claude in Chrome opens the PR, edits the description, and uploads the PNGs into the GitHub editor with the extension's file upload; GitHub generates the `user-attachments` URLs. Each image goes right after the `[TICKET-ID]` line with a one-line caption. Save, then re-read the PR body to confirm the images rendered. If Chrome is not connected, leave the PNGs and a ready-to-paste markdown snippet, and report their paths so the captain can drag them in himself.
 
-## Step 6 — Sync the portal user-guide docs (ts-polaris only)
-
-In the **ts-polaris** repo, a merge-gatekeeper check (`fe-nav-kb-validate`) blocks the PR when portal
-FE code changed but its portal user-guide page did not. Now that the PR exists, clear it:
-
-- **Only if** this is ts-polaris **and** the branch diff touches the guard's watched paths
-  (`portal/src/unified/**`, `portal/src/router/routes.ts`, `portal/src/**/layouts/**`, `Sidebar.vue`,
-  or `apps/aiAgentRuntime/knowledgeBase/portalUserManual/**`). If the diff touches none of these, skip
-  this step - the check passes instantly.
-- When it applies, invoke the **update-portal-user-guide** skill. It reproduces the check locally and
-  either updates the affected guide page (user-facing change) or lands the required `User-guide: n/a`
-  line in this PR's description (no user-facing change), then verifies a local PASS.
-
-If the skill edits doc pages or `nav-kb-map.json`, those land in the working tree - commit and push
-them onto this branch (this run is already authorized to push), so the PR carries the doc sync.
-
-## Step 7 — Report
+## Step 6 — Report
 
 Print the PR URL and the title used.
 
