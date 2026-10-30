@@ -1,0 +1,6 @@
+{
+  "name": "crew-panel",
+  "version": "0.1.0",
+  "description": "Read-only pane listing the workers of a firstmate home",
+  "types": "./types/index.d.ts"
+}
