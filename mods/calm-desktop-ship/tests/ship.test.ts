@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { estimateTokens, hasFailedChecks, isNightHour, seaForFill } from '../hooks/weather'
+import { estimateTokens, hasFailedChecks, isNightHour, parseRecordedPr, seaForFill } from '../hooks/weather'
 
 const HOME = '/Users/milanstankovic/work/firstmate'
 const STATE = `${HOME}/state`
@@ -385,6 +385,23 @@ test('a repo with the marker files at another path runs no process', async ($, o
   await clock.settle()
   await clock.advance(FIVE_MINUTES)
   expect(argv).toEqual([])
+})
+
+test('a recorded PR is read only from a plain host and repo', () => {
+  expect(parseRecordedPr('pr=https://git.example.com/o/r.x/pull/7\n')).toEqual({
+    host: 'git.example.com',
+    repo: 'o/r.x',
+    number: '7',
+  })
+
+  for (const url of [
+    'https://user@evil.example/o/r/pull/7',
+    'https://evil.example:8443/o/r/pull/7',
+    'https://github.com/o/r/x/pull/7',
+    'http://github.com/o/r/pull/7',
+  ]) {
+    expect(parseRecordedPr(`pr=${url}\n`)).toBeUndefined()
+  }
 })
 
 test('a checks reply with no summary reads as unknown', () => {

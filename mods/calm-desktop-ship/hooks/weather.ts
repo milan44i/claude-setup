@@ -9,7 +9,7 @@ const CHARS_PER_TOKEN = 4
 const COMMAND_CHARS = 60
 
 const META_PR = /^pr=(\S+)$/m
-const GITHUB_PR = /^https:\/\/([^/]+)\/([^/]+\/[^/]+)\/pull\/(\d+)$/
+const GITHUB_PR = /^https:\/\/([\w.-]+)\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)$/
 const FAILED_CHECKS = /^summary: "[^"]*\b(\d+) failed/m
 const CONTROLS = /[\u0000-\u001f\u007f-\u009f]+/g
 
