@@ -91,6 +91,65 @@ test('desktop with Calm on draws an interactive Svg, read only', async ($, on) =
   await ui.unmount()
 })
 
+const mountBand = async ($: Engine, isWorking = false) => {
+  return $.ui.mount({
+    plugin: 'calm-desktop-ship',
+    surface: 'desktop',
+    component: 'AbovePrompt',
+    requestId: 'above-prompt',
+    props: { hasSurvey: false, isWorking, maxRows: 12, bodyColumns: 80, scroll: { offset: 0, bodyRows: 12 }, view: {} },
+  })
+}
+
+const startJob = ($: Engine, command = 'sleep 20') =>
+  $.tool.call({ tool: 'Bash', command, run_in_background: true })
+
+const finishJob = ($: Engine, id: string) =>
+  $.prompt.submit({
+    text: `<task-notification>\n<task-id>${id}</task-id>\n<status>completed</status>\n</task-notification>`,
+    origin: { kind: 'task-notification' },
+  })
+
+const withJobs = (on: On) => {
+  world(on, CALM_ON)
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+    const { Text } = $.ui.resolve(e)
+
+    return Text({ children: STOCK })
+  })
+  on('prompt.submit', (_, e) => ({ text: e.text }))
+  on('tool.call', () => ({
+    result: { stdout: '', stderr: '', interrupted: false, backgroundTaskId: 'job-1' },
+  }))
+}
+
+const expectBandShip = async ($: Engine, isDrawn: boolean, isWorking = false) => {
+  const ui = await mountBand($, isWorking)
+  const svg = await ui.find({ type: 'Svg' })
+
+  expect(svg !== undefined).toBe(isDrawn)
+  await ui.unmount()
+}
+
+test('the band stays empty with no background job', async ($, on) => {
+  withJobs(on)
+  await expectBandShip($, false)
+})
+
+test('the band draws the ship until the job finishes', async ($, on) => {
+  withJobs(on)
+  await startJob($)
+  await expectBandShip($, true)
+  await finishJob($, 'job-1')
+  await expectBandShip($, false)
+})
+
+test('a running turn leaves the ship to its own row', async ($, on) => {
+  withJobs(on)
+  await startJob($)
+  await expectBandShip($, false, true)
+})
+
 test('terminal passes through', async ($, on) => {
   world(on, CALM_ON)
   await expectStock($, 'terminal')
