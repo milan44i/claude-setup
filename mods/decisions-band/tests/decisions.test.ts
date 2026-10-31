@@ -21,9 +21,10 @@ help[1]:
 `
 
 type Answer = { exitCode: number; stdout: string } | 'throw'
+type PaneOpen = { id: string; title?: string }
 
 const world = (on: On, answers: { held: Answer }, session = { root: HOME }) => {
-  const calls = { argv: [] as (readonly string[])[], writes: 0, prompts: [] as string[] }
+  const calls = { argv: [] as (readonly string[])[], writes: 0, prompts: [] as string[], opens: [] as PaneOpen[] }
 
   on('session.root', () => ({ value: session.root }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -38,6 +39,11 @@ const world = (on: On, answers: { held: Answer }, session = { root: HOME }) => {
     if (answers.held === 'throw') return { deny: 'cannot start' }
 
     return { value: { ...answers.held, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  on('ui.open', (_, e) => {
+    calls.opens.push({ id: e.id, title: e.title })
+
+    return { value: { isPlaced: true } }
   })
   on('prompt.submit', (_, e) => {
     calls.prompts.push(e.text)
@@ -58,13 +64,22 @@ const start = async ($: Engine, clock: MockClock) => {
   await clock.settle()
 }
 
-const mountBand = ($: Engine, surface: 'terminal' | 'desktop', hasSurvey = false, offset = 0) =>
+const mountBand = ($: Engine, surface: 'terminal' | 'desktop', hasSurvey = false) =>
   $.ui.mount({
     plugin: 'decisions-band',
     surface,
     component: 'AbovePrompt',
     requestId: 'above-prompt',
-    props: { hasSurvey, isWorking: false, maxRows: 12, bodyColumns: 80, scroll: { offset, bodyRows: 12 }, view: {} },
+    props: { hasSurvey, isWorking: false, maxRows: 12, bodyColumns: 80, scroll: { offset: 0, bodyRows: 12 }, view: {} },
+  })
+
+const mountPane = ($: Engine, surface: 'terminal' | 'desktop') =>
+  $.ui.mount({
+    plugin: 'decisions-band',
+    surface,
+    component: 'Pane',
+    requestId: 'decisions',
+    props: { title: 'Decisions', isFocused: false, bodyColumns: 40, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} },
   })
 
 test('a home reads the held list through its own script, read only', async ($, on) => {
@@ -86,7 +101,7 @@ test('collapsed shows one line and counts only what waits on the captain', async
   for (const surface of SURFACES) {
     const ui = await mountBand($, surface)
 
-    expect((await ui.find({ type: 'Button', key: 'toggle' }))?.props.label).toBe('2 decisions waiting')
+    expect((await ui.find({ type: 'Button', key: 'open' }))?.props.label).toBe('2 decisions waiting')
     expect(await ui.find({ type: 'Text', text: /Pick one/ })).toBeUndefined()
     expect(await ui.find({ type: 'Button', key: 'decide-pick-one' })).toBeUndefined()
     await ui.unmount()
@@ -109,15 +124,45 @@ test('hovering the band draws one hidden sentence out of the flow', async ($, on
   }
 })
 
-test('expanded lists each decision with one Decide button', async ($, on) => {
+test('pressing the row opens the panel and the band stays one row', async ($, on) => {
   const clock = mock.clock(on)
-  world(on, { held: { exitCode: 0, stdout: HELD } })
+  const calls = world(on, { held: { exitCode: 0, stdout: HELD } })
   await start($, clock)
 
   for (const surface of SURFACES) {
     const ui = await mountBand($, surface)
 
-    await ui.press({ key: 'toggle' })
+    calls.opens.length = 0
+    await ui.press({ key: 'open' })
+    expect(calls.opens).toEqual([{ id: 'decisions', title: 'Decisions' }])
+    expect((await ui.find({ type: 'Button', key: 'open' }))?.props.label).toBe('2 decisions waiting')
+    expect(await ui.find({ type: 'Text', text: /Pick one/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Button', key: 'decide-pick-one' })).toBeUndefined()
+    await ui.unmount()
+  }
+
+  expect(calls.prompts).toEqual([])
+  expect(calls.writes).toBe(0)
+  expect(calls.argv.length).toBe(1)
+})
+
+test('nothing opens the panel unasked', async ($, on) => {
+  const clock = mock.clock(on)
+  const calls = world(on, { held: { exitCode: 0, stdout: HELD } })
+
+  await start($, clock)
+  await clock.advance(MINUTE)
+  expect(calls.opens).toEqual([])
+})
+
+test('the panel lists each decision with one Decide button', async ($, on) => {
+  const clock = mock.clock(on)
+  world(on, { held: { exitCode: 0, stdout: HELD } })
+  await start($, clock)
+
+  for (const surface of SURFACES) {
+    const ui = await mountPane($, surface)
+
     expect((await ui.find({ type: 'Text', text: 'Pick one, or the other' }))?.text).toBe('Pick one, or the other')
     expect(await ui.find({ type: 'Text', text: 'Captain 2026-10-31: decide, and soon' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: 'A title cut short' })).toBeDefined()
@@ -129,40 +174,8 @@ test('expanded lists each decision with one Decide button', async ($, on) => {
       expect(await ui.find({ type: 'Button', key: `decide-${left}` })).toBeUndefined()
     }
 
-    await ui.press({ key: 'toggle' })
-    expect(await ui.find({ type: 'Button', key: 'decide-pick-one' })).toBeUndefined()
     await ui.unmount()
   }
-})
-
-test('the close x shows only while open, follows the scrolled window and only closes the list', async ($, on) => {
-  const clock = mock.clock(on)
-  const calls = world(on, { held: { exitCode: 0, stdout: HELD } })
-  await start($, clock)
-
-  for (const surface of SURFACES) {
-    const collapsed = await mountBand($, surface)
-
-    expect(await collapsed.find({ type: 'Button', key: 'close' })).toBeUndefined()
-    await collapsed.press({ key: 'toggle' })
-    await collapsed.unmount()
-
-    const scrolled = await mountBand($, surface, false, 14)
-    const boxes = await scrolled.findAll({ type: 'Box' })
-
-    expect(boxes.map(box => box.props)).toContainEqual({ position: 'absolute', top: 14, right: 0 })
-    expect((await scrolled.find({ type: 'Button', key: 'close' }))?.props.label).toBe('Close decisions')
-
-    await scrolled.press({ key: 'close' })
-    expect(await scrolled.find({ type: 'Button', key: 'close' })).toBeUndefined()
-    expect(await scrolled.find({ type: 'Button', key: 'decide-pick-one' })).toBeUndefined()
-    expect((await scrolled.find({ type: 'Button', key: 'toggle' }))?.props.label).toBe('2 decisions waiting')
-    await scrolled.unmount()
-  }
-
-  expect(calls.prompts).toEqual([])
-  expect(calls.writes).toBe(0)
-  expect(calls.argv.length).toBe(1)
 })
 
 test('Decide submits the prompt and writes nothing', async ($, on) => {
@@ -170,9 +183,8 @@ test('Decide submits the prompt and writes nothing', async ($, on) => {
   const calls = world(on, { held: { exitCode: 0, stdout: HELD } })
 
   await start($, clock)
-  const ui = await mountBand($, 'desktop')
+  const ui = await mountPane($, 'desktop')
 
-  await ui.press({ key: 'toggle' })
   await ui.press({ key: 'decide-long-title' })
   expect(calls.prompts).toEqual([
     'Explain the decision on long-title in plain words, what happens under each answer and what you recommend, then ask me for it.',
@@ -180,6 +192,47 @@ test('Decide submits the prompt and writes nothing', async ($, on) => {
   expect(calls.writes).toBe(0)
   expect(calls.argv.length).toBe(1)
   await ui.unmount()
+})
+
+test('the timer rereads the panel from the same list', async ($, on) => {
+  const clock = mock.clock(on)
+  const answers: { held: Answer } = { held: { exitCode: 0, stdout: HELD } }
+  const calls = world(on, answers)
+
+  await start($, clock)
+  const ui = await mountPane($, 'desktop')
+
+  expect(await ui.find({ type: 'Button', key: 'decide-pick-one' })).toBeDefined()
+
+  answers.held = { exitCode: 0, stdout: 'count: 0\ntasks: 0 held tasks\n' }
+  await clock.advance(MINUTE)
+  expect(calls.argv.length).toBe(2)
+  expect(await ui.find({ type: 'Button', key: 'decide-pick-one' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: 'No decisions waiting.' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a reread of the same list writes nothing, a changed one writes once', async ($, on) => {
+  const clock = mock.clock(on)
+  const answers: { held: Answer } = { held: { exitCode: 0, stdout: HELD } }
+  let sets = 0
+
+  world(on, answers)
+  on('state.set', { plugin: 'decisions-band' }, (_, e, next) => {
+    sets += 1
+
+    return next(e)
+  })
+
+  await start($, clock)
+  expect(sets).toBe(1)
+
+  await clock.advance(MINUTE)
+  expect(sets).toBe(1)
+
+  answers.held = { exitCode: 0, stdout: 'count: 0\n' }
+  await clock.advance(MINUTE)
+  expect(sets).toBe(2)
 })
 
 test('the timer rereads about every 60 seconds and the band follows', async ($, on) => {
@@ -190,13 +243,13 @@ test('the timer rereads about every 60 seconds and the band follows', async ($, 
   await start($, clock)
   const ui = await mountBand($, 'desktop')
 
-  expect(await ui.find({ type: 'Button', key: 'toggle' })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'open' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: STOCK })).toBeDefined()
 
   answers.held = { exitCode: 0, stdout: HELD }
   await clock.advance(MINUTE)
   expect(calls.argv.length).toBe(2)
-  expect((await ui.find({ type: 'Button', key: 'toggle' }))?.props.label).toBe('2 decisions waiting')
+  expect((await ui.find({ type: 'Button', key: 'open' }))?.props.label).toBe('2 decisions waiting')
   await ui.unmount()
 })
 
@@ -208,19 +261,18 @@ test('one decision reads in the singular', async ($, on) => {
   await start($, clock)
   const ui = await mountBand($, 'desktop')
 
-  expect((await ui.find({ type: 'Button', key: 'toggle' }))?.props.label).toBe('1 decision waiting')
+  expect((await ui.find({ type: 'Button', key: 'open' }))?.props.label).toBe('1 decision waiting')
   await ui.unmount()
 })
 
-test('control characters never reach the band', async ($, on) => {
+test('control characters never reach the panel', async ($, on) => {
   const clock = mock.clock(on)
   const raw = 'tasks[1]{id,state,kind,repo,title,hold_kind,hold_reason}:\n  a,queued,task,"-","\\u001b[31mRed",captain,"One\\u0007\\nTwo\\u009b"\n'
 
   world(on, { held: { exitCode: 0, stdout: raw } })
   await start($, clock)
-  const ui = await mountBand($, 'terminal')
+  const ui = await mountPane($, 'terminal')
 
-  await ui.press({ key: 'toggle' })
   expect(await ui.find({ type: 'Text', text: '[31mRed' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: 'One\nTwo' })).toBeDefined()
   await ui.unmount()
@@ -242,7 +294,7 @@ test('a failed read keeps the last list and the timer running', async ($, on) =>
 
   const ui = await mountBand($, 'desktop')
 
-  expect(await ui.find({ type: 'Button', key: 'toggle' })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'open' })).toBeUndefined()
   await ui.unmount()
 })
 
@@ -252,7 +304,7 @@ test('a survey keeps the band', async ($, on) => {
   await start($, clock)
   const ui = await mountBand($, 'desktop', true)
 
-  expect(await ui.find({ type: 'Button', key: 'toggle' })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'open' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: STOCK })).toBeDefined()
   await ui.unmount()
 })
@@ -289,7 +341,7 @@ test('a repo with every marker file at another path runs nothing and passes thro
 
   const ui = await mountBand($, 'desktop')
 
-  expect(await ui.find({ type: 'Button', key: 'toggle' })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'open' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: STOCK })).toBeDefined()
   await ui.unmount()
 })
@@ -308,9 +360,14 @@ test('a session moved out of the home stops reading and passes through', async (
 
   const ui = await mountBand($, 'desktop')
 
-  expect(await ui.find({ type: 'Button', key: 'toggle' })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'open' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: STOCK })).toBeDefined()
   await ui.unmount()
+
+  const pane = await mountPane($, 'desktop')
+
+  expect(await pane.find({ type: 'Button', key: 'decide-pick-one' })).toBeUndefined()
+  await pane.unmount()
 })
 
 const SHIP = {
@@ -334,6 +391,6 @@ test('with the ship in the band both draw', { plugins: [SHIP] }, async ($, on) =
   const ui = await mountBand($, 'desktop')
 
   expect(await ui.find({ type: 'Svg' })).toBeDefined()
-  expect((await ui.find({ type: 'Button', key: 'toggle' }))?.props.label).toBe('2 decisions waiting')
+  expect((await ui.find({ type: 'Button', key: 'open' }))?.props.label).toBe('2 decisions waiting')
   await ui.unmount()
 })

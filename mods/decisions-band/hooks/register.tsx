@@ -8,11 +8,10 @@ import { decidePrompt, parseDecisions, waitingLabel } from './decisions'
 const HOME = '/Users/milanstankovic/work/firstmate'
 const REFRESH_MS = 60_000
 const EXPLAINER = 'Lists the decisions waiting on you, click to open them.'
-const CLOSE_LABEL = 'Close decisions'
-const CLOSE_ROOM = 4
+const PANE = 'decisions'
+const TITLE = 'Decisions'
 
 const decisions = atom({ plugin: 'decisions-band', key: 'decisions' } as const, [] as readonly Decision[])
-const isOpen = atom({ plugin: 'decisions-band', key: 'isOpen' } as const, false)
 
 const isHome = async ($: EngineInterface) => (await $.session.root()) === HOME
 
@@ -30,7 +29,12 @@ const refresh = async ($: EngineInterface) => {
     'hold_kind,hold_reason',
   ])
 
-  if (exitCode === 0) await update($, decisions, () => parseDecisions(stdout))
+  if (exitCode !== 0) return
+
+  const found = parseDecisions(stdout)
+
+  // A rewrite of the same list redraws the panel under a scroll in progress
+  if (JSON.stringify(found) !== JSON.stringify(await read($, decisions))) await update($, decisions, () => found)
 }
 
 export const register: Register = on => {
@@ -55,44 +59,45 @@ export const register: Register = on => {
 
     const beneath = await next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
-    const rows = (await read($, isOpen)) ? waiting : []
 
     return (
       <Box flexDirection="column">
-        <Box key="band" flexDirection="column" paddingRight={CLOSE_ROOM}>
+        <Box key="band" flexDirection="column">
           <Button
-            key="toggle"
+            key="open"
             plain
             label={waitingLabel(waiting.length)}
-            onPress={() => update($, isOpen, open => !open)}
+            onPress={() => $.ui.open({ id: PANE, title: TITLE })}
           />
-          {rows.map(({ id, title, reason }) => (
-            <Box key={id} gap={1}>
-              <Box flexDirection="column" flexGrow={1} flexShrink={1}>
-                <Text bold>{title}</Text>
-                <Text dimColor>{reason}</Text>
-              </Box>
-              <Button
-                key={`decide-${id}`}
-                label="Decide"
-                onPress={() => $.prompt.submit({ text: decidePrompt(id) })}
-              />
-            </Box>
-          ))}
-          {rows.length > 0 ? (
-            // The band scrolls as one window with no sticky placement, so only the offset keeps the x in view
-            <Box position="absolute" top={e.props.scroll.offset} right={0}>
-              <Button key="close" plain label={CLOSE_LABEL} onPress={() => update($, isOpen, () => false)}>
-                x
-              </Button>
-            </Box>
-          ) : (
-            <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
-              <Text dimColor>{EXPLAINER}</Text>
-            </Box>
-          )}
+          <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
+            <Text dimColor>{EXPLAINER}</Text>
+          </Box>
         </Box>
         {beneath}
+      </Box>
+    )
+  })
+
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const waiting = (await isHome($)) ? await read($, decisions) : []
+    const { Box, Button, Text } = $.ui.resolve(e)
+
+    return (
+      <Box flexDirection="column">
+        {waiting.length === 0 && <Text dimColor>No decisions waiting.</Text>}
+        {waiting.map(({ id, title, reason }) => (
+          <Box key={id} gap={1}>
+            <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+              <Text bold>{title}</Text>
+              <Text dimColor>{reason}</Text>
+            </Box>
+            <Button
+              key={`decide-${id}`}
+              label="Decide"
+              onPress={() => $.prompt.submit({ text: decidePrompt(id) })}
+            />
+          </Box>
+        ))}
       </Box>
     )
   })
