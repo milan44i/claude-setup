@@ -166,13 +166,12 @@ const choose = async ($: EngineInterface, decision: Decision, option: Option) =>
   else $.ui.toast(`Could not record ${decision.id}: ${printable(stderr).trim()}`)
 }
 
-const execute = async ($: EngineInterface) => {
-  const seen = JSON.stringify(await read($, queue))
+const execute = async ($: EngineInterface, drawn: string) => {
   const found = await rereadQueue($)
   const batch = JSON.stringify(found)
 
   // A line the captain has not been shown yet needs its own look and a new press
-  if (batch !== seen) {
+  if (batch !== drawn) {
     $.ui.toast('The queue changed, check it and press again.')
 
     return
@@ -294,7 +293,7 @@ export const register: Register = on => {
       <Box flexDirection="column" gap={1}>
         {current.damaged.length > 0 && <Text color="error">{blockedText(current.damaged)}</Text>}
         {current.damaged.length === 0 && count > 0 && (
-          <Button key="execute" variant="primary" label={executeLabel(count, isSent)} onPress={() => execute($)} />
+          <Button key="execute" variant="primary" label={executeLabel(count, isSent)} onPress={() => execute($, JSON.stringify(current))} />
         )}
         {Object.entries(queued)
           .filter(([id]) => !waiting.some(decision => decision.id === id))
