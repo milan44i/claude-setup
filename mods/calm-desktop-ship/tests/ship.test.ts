@@ -49,57 +49,81 @@ const world = (
 
     return Text({ children: STOCK })
   })
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+    const { Text } = $.ui.resolve(e)
+
+    return Text({ children: STOCK })
+  })
 
   return calls
 }
 
-const mountSpinner = async ($: Engine, surface: 'terminal' | 'desktop') => {
+const mountSpinner = async ($: Engine, mode: 'thinking' | 'tool-use') => {
+  return $.ui.mount({
+    plugin: 'calm-desktop-ship',
+    surface: 'desktop',
+    component: 'Spinner',
+    requestId: 'main',
+    props: { word: 'Running a command', message: null, suffix: '…', mode },
+  })
+}
+
+const mountBand = async (
+  $: Engine,
+  isWorking = false,
+  surface: 'terminal' | 'desktop' = 'desktop',
+) => {
   return $.ui.mount({
     plugin: 'calm-desktop-ship',
     surface,
-    component: 'Spinner',
-    requestId: 'agent-main',
-    props: { word: 'Working', message: null, suffix: '…', mode: 'thinking' },
+    component: 'AbovePrompt',
+    requestId: 'above-prompt',
+    props: { hasSurvey: false, isWorking, maxRows: 12, bodyColumns: 80, scroll: { offset: 0, bodyRows: 12 }, view: {} },
   })
 }
 
 const expectStock = async ($: Engine, surface: 'terminal' | 'desktop') => {
-  const ui = await mountSpinner($, surface)
+  const ui = await mountBand($, true, surface)
 
   expect(await ui.find({ type: 'Svg' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: STOCK })).toBeDefined()
   await ui.unmount()
 }
 
-test('desktop with Calm on draws an interactive Svg, read only', async ($, on) => {
+test('a running turn on desktop with Calm on draws an interactive Svg, read only', async ($, on) => {
   const calls = world(on, CALM_ON)
-  const ui = await mountSpinner($, 'desktop')
+  const ui = await mountBand($, true)
   const svg = await ui.find({ type: 'Svg' })
   const source = String(svg?.props.source)
 
   expect(svg?.props.isInteractive).toBe(true)
   expect(svg?.props.width).toBe(4096)
-  expect(svg?.props.height).toBe(20)
+  expect(svg?.props.height).toBe(46)
   expect(source).not.toMatch(/viewBox/)
-  expect(String(svg?.props.alt)).toMatch(/sailboat/)
+  expect(String(svg?.props.alt)).toMatch(/pirate ship/)
   expect(source.length).toBeLessThan(131072)
   expect(source).toMatch(/<animateTransform [^>]*repeatCount="indefinite"/)
   expect(source).toMatch(/<animateTransform [^>]*type="rotate"[^>]*calcMode="spline"/)
+  expect(source).toMatch(/<animate attributeName="d" [^>]*dur="60s"/)
   expect(source).not.toMatch(/<script|\son\w+=/)
   expect(await ui.find({ type: 'Text', text: STOCK })).toBeUndefined()
   expect(calls).toEqual([])
   await ui.unmount()
 })
 
-const mountBand = async ($: Engine, isWorking = false) => {
-  return $.ui.mount({
-    plugin: 'calm-desktop-ship',
-    surface: 'desktop',
-    component: 'AbovePrompt',
-    requestId: 'above-prompt',
-    props: { hasSurvey: false, isWorking, maxRows: 12, bodyColumns: 80, scroll: { offset: 0, bodyRows: 12 }, view: {} },
-  })
-}
+test('the ship stays up in the band while a tool runs, and the row draws none', async ($, on) => {
+  world(on, CALM_ON)
+
+  for (const mode of ['thinking', 'tool-use'] as const) {
+    const row = await mountSpinner($, mode)
+
+    expect(await row.find({ type: 'Svg' })).toBeUndefined()
+    expect(await row.find({ type: 'Text', text: STOCK })).toBeDefined()
+    await row.unmount()
+  }
+
+  await expectBandShip($, true, true)
+})
 
 const startJob = ($: Engine, command = 'sleep 20') =>
   $.tool.call({ tool: 'Bash', command, run_in_background: true })
@@ -112,11 +136,6 @@ const finishJob = ($: Engine, id: string) =>
 
 const withJobs = (on: On) => {
   world(on, CALM_ON)
-  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
-    const { Text } = $.ui.resolve(e)
-
-    return Text({ children: STOCK })
-  })
   on('prompt.submit', (_, e) => ({ text: e.text }))
   on('tool.call', () => ({
     result: { stdout: '', stderr: '', interrupted: false, backgroundTaskId: 'job-1' },
@@ -144,10 +163,13 @@ test('the band draws the ship until the job finishes', async ($, on) => {
   await expectBandShip($, false)
 })
 
-test('a running turn leaves the ship to its own row', async ($, on) => {
+test('a running turn with a background job keeps the one ship in the band', async ($, on) => {
   withJobs(on)
   await startJob($)
-  await expectBandShip($, false, true)
+  await expectBandShip($, true, true)
+  await finishJob($, 'job-1')
+  await expectBandShip($, true, true)
+  await expectBandShip($, false)
 })
 
 test('terminal passes through', async ($, on) => {

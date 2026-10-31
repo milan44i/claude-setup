@@ -45,19 +45,11 @@ const isCalmOn = async ($: EngineInterface) => {
 }
 
 export const register: Register = on => {
-  on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
-    if (e.surface !== 'desktop' || !(await isCalmOn($))) return next(e)
-
-    const { Svg } = $.ui.resolve(e)
-
-    return <Svg {...SHIP} />
-  })
-
+  // The band, not the Spinner row: the app keeps its own row while a tool runs and clamps a Spinner frame to one line
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const isBusyElsewhere = e.props.hasSurvey || e.props.isWorking
-
-    if (e.surface !== 'desktop' || isBusyElsewhere) return next(e)
-    if ((await read($, jobs)).length === 0 || !(await isCalmOn($))) return next(e)
+    if (e.surface !== 'desktop' || e.props.hasSurvey) return next(e)
+    if (!e.props.isWorking && (await read($, jobs)).length === 0) return next(e)
+    if (!(await isCalmOn($))) return next(e)
 
     const { Svg } = $.ui.resolve(e)
 
