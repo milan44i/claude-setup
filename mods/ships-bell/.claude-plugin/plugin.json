@@ -1,0 +1,6 @@
+{
+  "name": "ships-bell",
+  "version": "0.1.0",
+  "description": "Rings a ship's bell when a firstmate turn ends with something to read or a captain decision appears",
+  "types": "./types/index.d.ts"
+}
