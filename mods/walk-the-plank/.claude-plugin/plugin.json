@@ -1,0 +1,6 @@
+{
+  "name": "walk-the-plank",
+  "version": "0.1.0",
+  "description": "Stops a commit message or PR title and body with a dash or AI slop, and walks the sentence off a plank",
+  "types": "./types/index.d.ts"
+}
