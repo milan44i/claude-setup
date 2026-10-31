@@ -10,7 +10,6 @@ const WORDS = new Map([
   ['NotebookEdit', 'Franky is welding the hull'],
   ['WebSearch', 'Nami is charting a course'],
   ['WebFetch', 'Nami is charting a course'],
-  ['Bash', 'Zoro is lost at sea'],
   ['Agent', 'Luffy is rallying the crew'],
   ['Workflow', 'Luffy is rallying the crew'],
   ['Skill', 'Brook is tuning his violin'],

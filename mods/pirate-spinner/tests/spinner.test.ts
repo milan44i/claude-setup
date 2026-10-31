@@ -67,7 +67,7 @@ test('each named tool has its own crewmate, an unnamed one a fallback, and none 
   expect(wordFor('Read')).toBe(READING)
   expect(wordFor('Edit')).toBe('Franky is welding the hull')
   expect(wordFor('WebSearch')).toBe('Nami is charting a course')
-  expect(wordFor('Bash')).toBe('Zoro is lost at sea')
+  expect(wordFor('Bash')).toBe('Chopper is mixing a remedy')
   expect(wordFor('mcp__x__y')).toBe('Chopper is mixing a remedy')
   expect(wordFor('toString')).toBe('Chopper is mixing a remedy')
 })
@@ -121,7 +121,7 @@ test('desktop leaves the app its row and draws the word in the band over what is
 
   const band = await mountBand($, 'desktop')
 
-  expect(await band.find({ type: 'Text', text: 'Zoro is lost at sea…' })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: 'Chopper is mixing a remedy…' })).toBeDefined()
   expect(await band.find({ type: 'Text', text: STOCK })).toBeDefined()
   await band.unmount()
   finishTool()
