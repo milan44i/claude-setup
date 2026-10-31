@@ -20,7 +20,7 @@ const readDraftFile = async ($: EngineInterface, path: string) => {
 
   const stat = await $.fs.stat(path).catch(() => undefined)
 
-  if (stat?.kind !== 'file' || stat.size > MAX_DRAFT_BYTES) return ''
+  if (stat?.kind !== 'file' || stat.isLink || stat.size > MAX_DRAFT_BYTES) return ''
 
   return $.fs.read(path).catch(() => '')
 }

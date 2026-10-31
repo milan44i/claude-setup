@@ -20,6 +20,7 @@ const world = (on: On, files: Record<string, string> = {}, readable: (path: stri
     const body = files[e.path]
 
     if (e.path.startsWith('/dev/')) return { value: { kind: 'other' as const, size: 0, mtimeMs: 0, isLink: false } }
+    if (e.path.endsWith('.link')) return { value: { kind: 'file' as const, size: 9, mtimeMs: 0, isLink: true } }
     if (body === undefined) return { deny: 'ENOENT' }
 
     return { value: { kind: 'file' as const, size: body.length, mtimeMs: 0, isLink: false } }
@@ -255,6 +256,13 @@ test('a file the session may not Read stays unread and unquoted', async ($, on) 
   expect(await bash($, 'gh pr create --title Plain --body "$(cat /secret/denied.env)"')).toBeUndefined()
   expect(calls.reads).toEqual([])
   expect(calls.toasts).toEqual([])
+})
+
+test('a symbolic link is not followed', async ($, on) => {
+  const calls = world(on, { '/repo/body.link': `Token ${EM} hunter2.` })
+
+  expect(await bash($, 'git commit -F /repo/body.link')).toBeUndefined()
+  expect(calls.reads).toEqual([])
 })
 
 test('a device or an oversized file is not read', async ($, on) => {
