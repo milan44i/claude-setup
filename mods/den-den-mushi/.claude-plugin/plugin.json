@@ -1,0 +1,6 @@
+{
+  "name": "den-den-mushi",
+  "version": "0.1.0",
+  "description": "Rings a snail phone above the prompt when a client or prospect mails in a firstmate home",
+  "types": "./types/index.d.ts"
+}
