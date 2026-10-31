@@ -5,6 +5,8 @@ import type { Engine, MockClock } from 'claude-code/testing'
 const HOME = '/Users/milanstankovic/work/firstmate'
 const SCRIPT = `${HOME}/bin/fm-tasks-axi.sh`
 const HOLD = `${HOME}/bin/fm-captain-hold.sh`
+const QUEUE = `${HOME}/data/decisions-queue.jsonl`
+const LOG = `${HOME}/data/decisions-log.jsonl`
 const STOCK = 'stock band'
 const MINUTE = 60_000
 const SURFACES = ['terminal', 'desktop'] as const
@@ -33,8 +35,13 @@ tasks[5]{id,state,kind,repo,title,hold_kind,hold_reason,hold_until}:
 
 const RECORD = 'task:\n  id: pick-one\n  title: "Pick one, or the other"\n  links: none\n'
 const REPORT_PATH = 'data/pick-origin/report.md'
-const ANSWERED = { isAnswered: true, text: 'Odluka je jednostavna.', usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } as const
-const USAGE = ANSWERED.usage
+const USAGE = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
+const OPTIONS = [
+  { label: 'Spoji PR 12 u main', consequence: 'Izmena odlazi u main.', recommended: true },
+  { label: 'Odbaci PR 12', consequence: 'Grana ostaje nespojena.', recommended: false },
+]
+const replied = (reply: unknown, text = JSON.stringify(reply)) => ({ isAnswered: true as const, text, usage: USAGE })
+const ANSWERED = replied({ explanation: 'Odluka je jednostavna.', options: OPTIONS })
 
 type Answer = { exitCode: number; stdout: string; stderr?: string } | 'throw'
 type PaneOpen = { id: string; title?: string }
@@ -46,8 +53,16 @@ type ModelAnswer =
 
 const world = (
   on: On,
-  answers: { held: Answer; show?: Answer; hold?: Answer; model?: ModelAnswer | Promise<ModelAnswer> },
-  session = { root: HOME },
+  answers: {
+    held: Answer
+    show?: Answer
+    hold?: Answer
+    append?: Answer
+    model?: ModelAnswer | Promise<ModelAnswer>
+    submit?: Promise<void> | 'deny'
+  },
+  session: { root: string; markers?: readonly string[] } = { root: HOME },
+  queue = { text: undefined as string | undefined },
 ) => {
   const calls = {
     argv: [] as (readonly string[])[],
@@ -59,6 +74,9 @@ const world = (
     toasts: [] as string[],
     models: [] as { model: string; prompt: string; system?: string }[],
     reads: [] as string[],
+    appends: [] as (readonly string[])[],
+    exists: [] as string[],
+    queue,
   }
   const reply = (answer: Answer) =>
     answer === 'throw'
@@ -73,6 +91,16 @@ const world = (
     return { value: undefined }
   })
   on('process.run', (_, e) => {
+    if (e.argv[0] === 'tee') {
+      calls.appends.push(e.argv)
+
+      if (answers.append !== undefined) return reply(answers.append)
+
+      queue.text = `${queue.text ?? ''}${e.init?.stdin ?? ''}`
+
+      return reply({ exitCode: 0, stdout: e.init?.stdin ?? '' })
+    }
+
     if (e.argv[0] === HOLD) {
       calls.holds.push(e.argv)
 
@@ -89,7 +117,14 @@ const world = (
 
     return reply(answers.held)
   })
+  on('fs.exists', (_, e) => {
+    calls.exists.push(e.path)
+
+    return { value: session.markers?.includes(e.path) || (e.path === QUEUE && queue.text !== undefined) }
+  })
   on('fs.read', (_, e) => {
+    if (e.path === QUEUE) return queue.text === undefined ? { deny: 'ENOENT' } : { value: queue.text }
+
     calls.reads.push(e.path)
 
     return e.path === `${HOME}/${REPORT_PATH}` ? { value: 'What the report found.' } : { deny: 'ENOENT' }
@@ -111,8 +146,12 @@ const world = (
 
     return { value: { isPlaced: true } }
   })
-  on('prompt.submit', (_, e) => {
+  on('prompt.submit', async (_, e) => {
     calls.prompts.push(e.text)
+
+    if (answers.submit === 'deny') throw new Error('blocked prompt')
+
+    await answers.submit
 
     return { text: e.text }
   })
@@ -392,7 +431,11 @@ test('Decide asks sonnet in Serbian with the title, reason and record', async ($
   expect(calls.shows).toEqual([[SCRIPT, 'show', 'pick-one', '--full']])
   expect(asked?.model).toBe('sonnet')
   expect(asked?.system).toMatch(/Serbian/)
-  expect(asked?.system).toMatch(/what happens under each answer and what you recommend/)
+  expect(asked?.system).toMatch(/one JSON object/)
+  expect(asked?.system).toMatch(/2 to 4 options and mark exactly one as recommended/)
+  expect(asked?.system).toMatch(/word for that exact label and nothing wider/)
+  expect(asked?.system).toMatch(/every merge, send, publish or delete/)
+  expect(asked?.system).toMatch(/Never write a vague label/)
   expect(asked?.prompt).toContain('Title: Pick one, or the other')
   expect(asked?.prompt).toContain('Hold reason: Captain 2026-10-31: decide, and soon')
   expect(asked?.prompt).toContain(RECORD)
@@ -567,7 +610,13 @@ test('control characters never reach the panel', async ($, on) => {
 
   world(on, {
     held: { exitCode: 0, stdout: raw },
-    model: { isAnswered: true, text: '\u001b[31mCrveno', usage: USAGE },
+    model: replied({
+      explanation: '\u001b[31mCrveno',
+      options: [
+        { label: '\u001b[31mPrva', consequence: 'Jedan\u0007', recommended: true },
+        { label: 'Druga', consequence: 'Dva', recommended: false },
+      ],
+    }),
   })
   await start($, clock)
   const ui = await mountPane($, 'terminal')
@@ -578,6 +627,8 @@ test('control characters never reach the panel', async ($, on) => {
   await ui.press({ key: 'decide-a' })
   await clock.settle()
   expect(await ui.find({ type: 'Text', text: '[31mCrveno' })).toBeDefined()
+  expect((await ui.find({ type: 'Button', key: 'option-a-0' }))?.props.label).toBe('[31mPrva (preporuka)')
+  expect(await ui.find({ type: 'Text', text: 'Jedan' })).toBeDefined()
   await ui.unmount()
 })
 
@@ -629,9 +680,8 @@ test('a repo with every marker file at another path runs nothing and passes thro
   const clock = clockAt(on)
   const repo = `${HOME}-copy`
   const markers = [`${repo}/bin/fm-crew-state.sh`, `${repo}/bin/fm-tasks-axi.sh`]
-  const calls = world(on, { held: { exitCode: 0, stdout: HELD } }, { root: repo })
+  const calls = world(on, { held: { exitCode: 0, stdout: HELD } }, { root: repo, markers })
 
-  on('fs.exists', (_, e) => ({ value: markers.includes(e.path) }))
   on('fs.stat', (_, e) => {
     if (e.path !== `${repo}/state`) return { deny: 'ENOENT' }
 
@@ -671,6 +721,376 @@ test('a session moved out of the home stops reading and passes through', async (
 
   expect(await pane.find({ type: 'Button', key: 'decide-pick-one' })).toBeUndefined()
   await pane.unmount()
+})
+
+const started = async (
+  on: On,
+  $: Engine,
+  answers: Parameters<typeof world>[1] = { held: { exitCode: 0, stdout: HELD } },
+  queueText?: string,
+) => {
+  const clock = clockAt(on)
+  const calls = world(on, answers, { root: HOME }, { text: queueText })
+
+  await start($, clock)
+
+  return { clock, calls, ui: await mountPane($, 'desktop') }
+}
+
+const lineOf = (id: string, choice: string, time = '2026-10-31T11:00:00.000Z') =>
+  `${JSON.stringify({ id, title: id, choice, consequence: `Posle ${choice}.`, time })}\n`
+
+const labelOf = async (ui: Awaited<ReturnType<typeof mountPane>>, key: string) =>
+  (await ui.find({ type: 'Button', key }))?.props.label
+
+test('Decide draws the options under the row with one recommended', async ($, on) => {
+  const clock = clockAt(on)
+  world(on, { held: { exitCode: 0, stdout: HELD } })
+  await start($, clock)
+
+  const before = await mountPane($, 'desktop')
+
+  expect(await before.find({ type: 'Button', key: 'option-pick-one-0' })).toBeUndefined()
+  await before.press({ key: 'decide-pick-one' })
+  await clock.settle()
+  await before.unmount()
+
+  for (const surface of SURFACES) {
+    const ui = await mountPane($, surface)
+
+    expect(await labelOf(ui, 'option-pick-one-0')).toBe('Spoji PR 12 u main (preporuka)')
+    expect(await labelOf(ui, 'option-pick-one-1')).toBe('Odbaci PR 12')
+    expect(await ui.find({ type: 'Text', text: 'Izmena odlazi u main.' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'Grana ostaje nespojena.' })).toBeDefined()
+    expect(await ui.find({ type: 'Button', key: 'option-long-title-0' })).toBeUndefined()
+    await ui.unmount()
+  }
+})
+
+test('a reply in a code fence still parses', async ($, on) => {
+  const { clock, ui } = await started(on, $, {
+    held: { exitCode: 0, stdout: HELD },
+    model: replied(undefined, `Evo:\n\`\`\`json\n${ANSWERED.text}\n\`\`\``),
+  })
+
+  await ui.press({ key: 'decide-pick-one' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: 'Odluka je jednostavna.' })).toBeDefined()
+  expect(await ui.find({ type: 'Button', key: 'option-pick-one-1' })).toBeDefined()
+  await ui.unmount()
+})
+
+const option = (label: unknown, recommended = false) => ({ label, consequence: 'Posle.', recommended })
+const UNPARSEABLE: readonly (readonly [string, string])[] = [
+  ['Samo tekst, bez objekta.', 'the reply is not JSON'],
+  ['{"explanation": "cut', 'the reply is not JSON'],
+  ['[1]', 'the reply is not JSON'],
+  [JSON.stringify({ options: OPTIONS }), 'the reply has no explanation'],
+  [JSON.stringify({ explanation: 'X' }), 'the reply has no options'],
+  [JSON.stringify({ explanation: 'X', options: [option('A', true)] }), 'the reply has 1 options, not 2 to 4'],
+  [
+    JSON.stringify({ explanation: 'X', options: ['A', 'B', 'C', 'D', 'E'].map(label => option(label, label === 'A')) }),
+    'the reply has 5 options, not 2 to 4',
+  ],
+  [JSON.stringify({ explanation: 'X', options: [option('A', true), option('')] }), 'an option has no label or no consequence'],
+  [JSON.stringify({ explanation: 'X', options: [option('A', true), { label: 'B' }] }), 'an option has no label or no consequence'],
+  [JSON.stringify({ explanation: 'X', options: [option('A', true), option('A')] }), 'two options share a label'],
+  [JSON.stringify({ explanation: 'X', options: [option('A'), option('B')] }), 'the reply recommends 0 options, not 1'],
+  [JSON.stringify({ explanation: 'X', options: [option('A', true), option('B', true)] }), 'the reply recommends 2 options, not 1'],
+]
+
+test('a reply that cannot be parsed shows its reason, offers nothing, and a new press retries', async ($, on) => {
+  const answers: { held: Answer; model: ModelAnswer } = { held: { exitCode: 0, stdout: HELD }, model: ANSWERED }
+  const { clock, ui } = await started(on, $, answers)
+
+  for (const [text, reason] of UNPARSEABLE) {
+    answers.model = replied(undefined, text)
+    await ui.press({ key: 'decide-pick-one' })
+    await clock.settle()
+    expect(await ui.find({ type: 'Text', text: `Could not explain: ${reason}` })).toBeDefined()
+    expect(await ui.find({ type: 'Button', key: 'option-pick-one-0' })).toBeUndefined()
+  }
+
+  answers.model = ANSWERED
+  await ui.press({ key: 'decide-pick-one' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Button', key: 'option-pick-one-0' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('an option press appends one line, marks the option, keeps the row and starts no turn', async ($, on) => {
+  const { clock, calls, ui } = await started(on, $)
+
+  await ui.press({ key: 'decide-pick-one' })
+  await clock.settle()
+  await ui.press({ key: 'option-pick-one-0' })
+  await clock.settle()
+
+  expect(calls.appends).toEqual([['tee', '-a', QUEUE]])
+  expect(calls.writes).toBe(0)
+  expect(calls.queue.text).toBe(
+    `${JSON.stringify({
+      id: 'pick-one',
+      title: 'Pick one, or the other',
+      choice: 'Spoji PR 12 u main',
+      consequence: 'Izmena odlazi u main.',
+      time: new Date(LAST_OF_OCTOBER).toISOString(),
+    })}\n`,
+  )
+  expect(await labelOf(ui, 'option-pick-one-0')).toBe('✓ Spoji PR 12 u main (preporuka)')
+  expect(await labelOf(ui, 'option-pick-one-1')).toBe('Odbaci PR 12')
+  expect(await ui.find({ type: 'Button', key: 'decide-pick-one' })).toBeDefined()
+  expect(calls.prompts).toEqual([])
+  expect(calls.holds).toEqual([])
+  await ui.unmount()
+})
+
+test('pressing another option appends a newer line and the newest wins', async ($, on) => {
+  const { clock, calls, ui } = await started(on, $)
+
+  await ui.press({ key: 'decide-pick-one' })
+  await clock.settle()
+  await ui.press({ key: 'option-pick-one-0' })
+  await clock.settle()
+  await ui.press({ key: 'option-pick-one-1' })
+  await clock.settle()
+
+  expect(calls.queue.text?.trim().split('\n').length).toBe(2)
+  expect(await labelOf(ui, 'option-pick-one-0')).toBe('Spoji PR 12 u main (preporuka)')
+  expect(await labelOf(ui, 'option-pick-one-1')).toBe('✓ Odbaci PR 12')
+  expect(await labelOf(ui, 'execute')).toBe('Izvrši odluke (1)')
+  await ui.unmount()
+})
+
+test('marks come from the file in a new session, with nothing in the store', async ($, on) => {
+  let sets = 0
+  const clock = mock.clock(on, { now: LAST_OF_OCTOBER })
+
+  on('store.keys', () => ({ value: [] }))
+  on('store.set', () => {
+    sets += 1
+
+    return { value: undefined }
+  })
+  const queue = { text: `${lineOf('pick-one', 'Stara odluka')}not json\n${lineOf('pick-one', 'Nova odluka')}` as string | undefined }
+
+  world(on, { held: { exitCode: 0, stdout: HELD } }, { root: HOME }, queue)
+  await start($, clock)
+  const ui = await mountPane($, 'desktop')
+
+  expect(await ui.find({ type: 'Text', text: 'Izabrano: Nova odluka' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'Posle Nova odluka.' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Stara odluka/ })).toBeUndefined()
+  expect(await labelOf(ui, 'execute')).toBe('Izvrši odluke (1)')
+
+  await ui.press({ key: 'decide-pick-one' })
+  await clock.settle()
+  await ui.press({ key: 'option-pick-one-0' })
+  await clock.settle()
+  expect(sets).toBe(0)
+  await ui.unmount()
+})
+
+test('a mark the fresh options do not offer stays until a new press', async ($, on) => {
+  const { clock, ui } = await started(on, $, undefined, lineOf('pick-one', 'Stara odluka'))
+
+  await ui.press({ key: 'decide-pick-one' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: 'Izabrano: Stara odluka' })).toBeDefined()
+
+  await ui.press({ key: 'option-pick-one-1' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: /Izabrano/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a refused append says why and marks nothing', async ($, on) => {
+  const { clock, calls, ui } = await started(on, $, {
+    held: { exitCode: 0, stdout: HELD },
+    append: { exitCode: 1, stdout: '', stderr: 'tee: Permission denied\n' },
+  })
+
+  await ui.press({ key: 'decide-pick-one' })
+  await clock.settle()
+  await ui.press({ key: 'option-pick-one-0' })
+  await clock.settle()
+  expect(calls.toasts).toEqual(['Could not record pick-one: tee: Permission denied'])
+  expect(await labelOf(ui, 'option-pick-one-0')).toBe('Spoji PR 12 u main (preporuka)')
+  expect(await ui.find({ type: 'Button', key: 'execute' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('the execute button shows only above zero and counts ids, not lines', async ($, on) => {
+  const { clock, calls, ui } = await started(on, $)
+
+  expect(await ui.find({ type: 'Button', key: 'execute' })).toBeUndefined()
+
+  calls.queue.text = `${lineOf('pick-one', 'A')}${lineOf('pick-one', 'B')}${lineOf('long-title', 'C')}`
+  await clock.advance(MINUTE)
+  expect(await labelOf(ui, 'execute')).toBe('Izvrši odluke (2)')
+  await ui.unmount()
+})
+
+test('execute submits once, shows it was sent while the session is busy, and names the queue', async ($, on) => {
+  let idle: () => void = () => undefined
+  const { clock, calls, ui } = await started(
+    on,
+    $,
+    { held: { exitCode: 0, stdout: HELD }, submit: new Promise<void>(resolve => { idle = resolve }) },
+    lineOf('pick-one', 'Spoji PR 12 u main'),
+  )
+
+  await Promise.all([ui.press({ key: 'execute' }), ui.press({ key: 'execute' })])
+  expect(await labelOf(ui, 'execute')).toBe('Poslato firstmate-u (1)')
+  await ui.press({ key: 'execute' })
+  await clock.settle()
+  expect(calls.prompts.length).toBe(1)
+
+  idle()
+  await clock.settle()
+  expect(await labelOf(ui, 'execute')).toBe('Poslato firstmate-u (1)')
+  expect(calls.prompts.length).toBe(1)
+  expect(calls.holds).toEqual([])
+  expect(calls.queue.text).toBe(lineOf('pick-one', 'Spoji PR 12 u main'))
+
+  const [prompt] = calls.prompts
+
+  expect(prompt).toContain(QUEUE)
+  expect(prompt).toContain(LOG)
+  expect(prompt).toContain('newest line per id')
+  expect(prompt).toContain('bin/fm-captain-hold.sh answer <id> --decision-file')
+  expect(prompt).toContain('exact label and nothing wider')
+  expect(prompt).toContain('Report in one message')
+  await ui.unmount()
+})
+
+test('a newer press offers execute again, and a handled queue removes it', async ($, on) => {
+  const { clock, calls, ui } = await started(on, $, undefined, lineOf('pick-one', 'A'))
+
+  await ui.press({ key: 'execute' })
+  await clock.settle()
+  expect(await labelOf(ui, 'execute')).toBe('Poslato firstmate-u (1)')
+
+  await ui.press({ key: 'decide-long-title' })
+  await clock.settle()
+  await ui.press({ key: 'option-long-title-1' })
+  await clock.settle()
+  expect(await labelOf(ui, 'execute')).toBe('Izvrši odluke (2)')
+
+  await ui.press({ key: 'execute' })
+  await clock.settle()
+  expect(calls.prompts.length).toBe(2)
+
+  calls.queue.text = ''
+  await clock.advance(MINUTE)
+  expect(await ui.find({ type: 'Button', key: 'execute' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /Izabrano/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a refused batch says why and offers execute again', async ($, on) => {
+  const { clock, calls, ui } = await started(
+    on,
+    $,
+    { held: { exitCode: 0, stdout: HELD }, submit: 'deny' },
+    lineOf('pick-one', 'A'),
+  )
+
+  await ui.press({ key: 'execute' })
+  await clock.settle()
+  expect(calls.toasts.length).toBe(1)
+  expect(calls.toasts[0]).toMatch(/^Could not send the batch: /)
+  expect(await labelOf(ui, 'execute')).toBe('Izvrši odluke (1)')
+  await ui.unmount()
+})
+
+test('outside the home the queue is neither read nor offered', async ($, on) => {
+  const clock = clockAt(on)
+  const session = { root: HOME }
+  const calls = world(on, { held: { exitCode: 0, stdout: HELD } }, session, { text: lineOf('pick-one', 'A') })
+
+  await start($, clock)
+  calls.exists.length = 0
+  session.root = '/some/other/project'
+  await clock.advance(MINUTE)
+  expect(calls.exists).toEqual([])
+
+  const ui = await mountPane($, 'desktop')
+
+  expect(await ui.find({ type: 'Button', key: 'execute' })).toBeUndefined()
+  await ui.unmount()
+})
+
+const LONG_REASON = 'Razlog koji je duzi od jednog reda u panelu i zato mora da se skrati na dva reda.'
+const LONG = `tasks[2]{id,state,kind,repo,title,hold_kind,hold_reason}:
+  long-one,queued,task,"-",Dug,captain,"${LONG_REASON}"
+  short-one,queued,task,"-",Kratak,captain,"Kratko"
+`
+const CLAMP = { flexDirection: 'column', flexShrink: 0, height: 2, overflow: 'hidden' }
+
+test('each row is a separate card with the title and reason above one row of buttons', async ($, on) => {
+  const clock = clockAt(on)
+  world(on, { held: { exitCode: 0, stdout: HELD } })
+  await start($, clock)
+
+  for (const surface of SURFACES) {
+    const ui = await mountPane($, surface)
+    const row = (await ui.findAll({ type: 'Box' })).find(box => box.key === 'pick-one')
+    const [title, reason, buttons] = row?.children ?? []
+
+    expect(row?.props).toMatchObject({ flexDirection: 'column', borderStyle: 'round', borderDimColor: true })
+    expect(title).toMatchObject({ type: 'Text', children: ['Pick one, or the other'] })
+    expect(reason).toMatchObject({ type: 'Text', children: ['Captain 2026-10-31: decide, and soon'] })
+    expect(buttons).toMatchObject({ type: 'Box', props: { gap: 1 } })
+    expect((await ui.findAll({ type: 'Box' })).find(box => box.props.gap === 1 && box.props.flexDirection === 'column')).toBeDefined()
+    await ui.unmount()
+  }
+})
+
+test('a long reason is clipped to two rows until Decide opens the row, a short one never', async ($, on) => {
+  const { clock, ui } = await started(on, $, { held: { exitCode: 0, stdout: LONG } })
+  const clipped = async () => (await ui.findAll({ type: 'Box' })).filter(box => box.props.overflow === 'hidden').map(box => box.key)
+
+  expect(await clipped()).toEqual(['reason-long-one'])
+  expect((await ui.findAll({ type: 'Box' })).find(box => box.key === 'reason-long-one')?.props).toMatchObject(CLAMP)
+  expect(await ui.find({ type: 'Text', text: LONG_REASON })).toBeDefined()
+
+  await ui.press({ key: 'decide-long-one' })
+  await clock.settle()
+  expect(await clipped()).toEqual([])
+  expect(await ui.find({ type: 'Text', text: LONG_REASON })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a reason with a line break counts as long', async ($, on) => {
+  const { ui } = await started(on, $)
+
+  expect((await ui.findAll({ type: 'Box' })).map(box => box.key)).toContain('reason-long-title')
+  await ui.unmount()
+})
+
+test('the up arrow and x each carry a Serbian card their keyed parent reveals', async ($, on) => {
+  const clock = clockAt(on)
+  world(on, { held: { exitCode: 0, stdout: HELD } })
+  await start($, clock)
+
+  for (const surface of SURFACES) {
+    const ui = await mountPane($, surface)
+    const boxes = await ui.findAll({ type: 'Box' })
+
+    for (const [key, button, help] of [
+      ['postpone-help-pick-one', 'postpone-pick-one', /^Odlaže odluku do sutra\. Red nestaje i vraća se sutra/],
+      ['hide-help-pick-one', 'hide-pick-one', /^Sakriva red iz panela, i u novim sesijama, bez poništavanja\. Zadatak se ne menja/],
+    ] as const) {
+      const [pressed, card] = boxes.find(box => box.key === key)?.children ?? []
+
+      expect(pressed).toMatchObject({ type: 'Button', props: { key: button } })
+      expect(card).toMatchObject({ type: 'Box', props: { position: 'absolute', display: 'none' }, hover: { display: 'flex' } })
+      expect(await ui.find({ type: 'Text', text: help })).toBeDefined()
+    }
+
+    await ui.unmount()
+  }
 })
 
 const SHIP = {
