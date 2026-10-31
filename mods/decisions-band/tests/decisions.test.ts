@@ -4,9 +4,11 @@ import type { Engine, MockClock } from 'claude-code/testing'
 
 const HOME = '/Users/milanstankovic/work/firstmate'
 const SCRIPT = `${HOME}/bin/fm-tasks-axi.sh`
+const HOLD = `${HOME}/bin/fm-captain-hold.sh`
 const STOCK = 'stock band'
 const MINUTE = 60_000
 const SURFACES = ['terminal', 'desktop'] as const
+const LAST_OF_OCTOBER = new Date(2026, 9, 31, 12).getTime()
 
 const HELD = `count: 6
 tasks[6]{id,state,kind,repo,title,hold_kind,hold_reason}:
@@ -20,11 +22,48 @@ help[1]:
   - Run \`tasks-axi show <id>\` for full notes on a task
 `
 
-type Answer = { exitCode: number; stdout: string } | 'throw'
-type PaneOpen = { id: string; title?: string }
+const DATED = `count: 5
+tasks[5]{id,state,kind,repo,title,hold_kind,hold_reason,hold_until}:
+  undated,queued,task,"-",Undated,captain,"Pick","-"
+  tomorrow,queued,task,"-",Tomorrow,captain,"Pick",2026-11-01
+  due-today,queued,task,"-",Today,captain,"Pick",2026-10-31
+  overdue,in_flight,ship,repo,Overdue,captain,"Pick",2026-10-30
+  closed,done,task,"-",Closed,captain,"Pick","-"
+`
 
-const world = (on: On, answers: { held: Answer }, session = { root: HOME }) => {
-  const calls = { argv: [] as (readonly string[])[], writes: 0, prompts: [] as string[], opens: [] as PaneOpen[] }
+const RECORD = 'task:\n  id: pick-one\n  title: "Pick one, or the other"\n  links: none\n'
+const REPORT_PATH = 'data/pick-origin/report.md'
+const ANSWERED = { isAnswered: true, text: 'Odluka je jednostavna.', usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } as const
+const USAGE = ANSWERED.usage
+
+type Answer = { exitCode: number; stdout: string; stderr?: string } | 'throw'
+type PaneOpen = { id: string; title?: string }
+type ModelAnswer =
+  | { isAnswered: true; text: string; usage: typeof USAGE }
+  | { isAnswered: false; reason: 'empty-reply' | 'aborted'; usage: typeof USAGE }
+  | { isAnswered: false; reason: 'api-error'; status: number; error: 'rate_limit'; usage: typeof USAGE }
+  | 'throw'
+
+const world = (
+  on: On,
+  answers: { held: Answer; show?: Answer; hold?: Answer; model?: ModelAnswer | Promise<ModelAnswer> },
+  session = { root: HOME },
+) => {
+  const calls = {
+    argv: [] as (readonly string[])[],
+    holds: [] as (readonly string[])[],
+    shows: [] as (readonly string[])[],
+    writes: 0,
+    prompts: [] as string[],
+    opens: [] as PaneOpen[],
+    toasts: [] as string[],
+    models: [] as { model: string; prompt: string; system?: string }[],
+    reads: [] as string[],
+  }
+  const reply = (answer: Answer) =>
+    answer === 'throw'
+      ? { deny: 'cannot start' }
+      : { value: { stderr: '', ...answer, isStdoutTruncated: false, isStderrTruncated: false } }
 
   on('session.root', () => ({ value: session.root }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -34,11 +73,38 @@ const world = (on: On, answers: { held: Answer }, session = { root: HOME }) => {
     return { value: undefined }
   })
   on('process.run', (_, e) => {
+    if (e.argv[0] === HOLD) {
+      calls.holds.push(e.argv)
+
+      return reply(answers.hold ?? { exitCode: 0, stdout: '' })
+    }
+
+    if (e.argv[1] === 'show') {
+      calls.shows.push(e.argv)
+
+      return reply(answers.show ?? { exitCode: 0, stdout: RECORD })
+    }
+
     calls.argv.push(e.argv)
 
-    if (answers.held === 'throw') return { deny: 'cannot start' }
+    return reply(answers.held)
+  })
+  on('fs.read', (_, e) => {
+    calls.reads.push(e.path)
 
-    return { value: { ...answers.held, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    return e.path === `${HOME}/${REPORT_PATH}` ? { value: 'What the report found.' } : { deny: 'ENOENT' }
+  })
+  on('model.complete', async (_, e) => {
+    calls.models.push({ model: e.model, prompt: e.prompt, system: e.system })
+
+    const answer = await (answers.model ?? ANSWERED)
+
+    return answer === 'throw' ? { deny: 'blocked model' } : { value: answer }
+  })
+  on('ui.toast', (_, e) => {
+    calls.toasts.push(e.text)
+
+    return { value: undefined }
   })
   on('ui.open', (_, e) => {
     calls.opens.push({ id: e.id, title: e.title })
@@ -57,6 +123,12 @@ const world = (on: On, answers: { held: Answer }, session = { root: HOME }) => {
   })
 
   return calls
+}
+
+const clockAt = (on: On, now = LAST_OF_OCTOBER, entries: Readonly<Record<string, unknown>> = {}) => {
+  mock.store(on, entries)
+
+  return mock.clock(on, { now })
 }
 
 const start = async ($: Engine, clock: MockClock) => {
@@ -82,19 +154,19 @@ const mountPane = ($: Engine, surface: 'terminal' | 'desktop') =>
     props: { title: 'Decisions', isFocused: false, bodyColumns: 40, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} },
   })
 
-test('a home reads the held list through its own script, read only', async ($, on) => {
-  const clock = mock.clock(on)
+test('a home reads the backlog through its own script, read only, with every date gate', async ($, on) => {
+  const clock = clockAt(on)
   const calls = world(on, { held: { exitCode: 0, stdout: HELD } })
 
   await start($, clock)
   expect(calls.argv).toEqual([
-    [SCRIPT, 'list', '--state', 'held', '--limit', '1000', '--fields', 'hold_kind,hold_reason'],
+    [SCRIPT, 'list', '--limit', '1000', '--fields', 'hold_kind,hold_reason,hold_until'],
   ])
   expect(calls.writes).toBe(0)
 })
 
 test('collapsed shows one line and counts only what waits on the captain', async ($, on) => {
-  const clock = mock.clock(on)
+  const clock = clockAt(on)
   world(on, { held: { exitCode: 0, stdout: HELD } })
   await start($, clock)
 
@@ -109,7 +181,7 @@ test('collapsed shows one line and counts only what waits on the captain', async
 })
 
 test('hovering the band draws one hidden sentence out of the flow', async ($, on) => {
-  const clock = mock.clock(on)
+  const clock = clockAt(on)
   world(on, { held: { exitCode: 0, stdout: HELD } })
   await start($, clock)
 
@@ -125,7 +197,7 @@ test('hovering the band draws one hidden sentence out of the flow', async ($, on
 })
 
 test('pressing the row opens the panel and the band stays one row', async ($, on) => {
-  const clock = mock.clock(on)
+  const clock = clockAt(on)
   const calls = world(on, { held: { exitCode: 0, stdout: HELD } })
   await start($, clock)
 
@@ -147,7 +219,7 @@ test('pressing the row opens the panel and the band stays one row', async ($, on
 })
 
 test('nothing opens the panel unasked', async ($, on) => {
-  const clock = mock.clock(on)
+  const clock = clockAt(on)
   const calls = world(on, { held: { exitCode: 0, stdout: HELD } })
 
   await start($, clock)
@@ -155,8 +227,8 @@ test('nothing opens the panel unasked', async ($, on) => {
   expect(calls.opens).toEqual([])
 })
 
-test('the panel lists each decision with one Decide button', async ($, on) => {
-  const clock = mock.clock(on)
+test('the panel lists each decision with Decide, postpone and x', async ($, on) => {
+  const clock = clockAt(on)
   world(on, { held: { exitCode: 0, stdout: HELD } })
   await start($, clock)
 
@@ -168,6 +240,8 @@ test('the panel lists each decision with one Decide button', async ($, on) => {
     expect(await ui.find({ type: 'Text', text: 'A title cut short' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: 'Second\nline' })).toBeDefined()
     expect((await ui.find({ type: 'Button', key: 'decide-pick-one' }))?.props.label).toBe('Decide')
+    expect((await ui.find({ type: 'Button', key: 'postpone-pick-one' }))?.props.label).toBe('↑')
+    expect((await ui.find({ type: 'Button', key: 'hide-pick-one' }))?.props.label).toBe('×')
     expect(await ui.find({ type: 'Button', key: 'decide-long-title' })).toBeDefined()
 
     for (const left of ['on-someone', 'a-reminder', 'not-yet', 'ops-wait']) {
@@ -178,24 +252,246 @@ test('the panel lists each decision with one Decide button', async ($, on) => {
   }
 })
 
-test('Decide submits the prompt and writes nothing', async ($, on) => {
-  const clock = mock.clock(on)
+test('a future date hides a row, its date or a later one shows it, and a closed row never shows', async ($, on) => {
+  const clock = clockAt(on)
+  world(on, { held: { exitCode: 0, stdout: DATED } })
+  await start($, clock)
+  const ui = await mountPane($, 'desktop')
+  const band = await mountBand($, 'desktop')
+
+  for (const shown of ['undated', 'due-today', 'overdue']) {
+    expect(await ui.find({ type: 'Button', key: `decide-${shown}` })).toBeDefined()
+  }
+
+  expect(await ui.find({ type: 'Button', key: 'decide-tomorrow' })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'decide-closed' })).toBeUndefined()
+  expect((await band.find({ type: 'Button', key: 'open' }))?.props.label).toBe('3 decisions waiting')
+  await ui.unmount()
+  await band.unmount()
+})
+
+test('a postponed row comes back when its date arrives', async ($, on) => {
+  const clock = clockAt(on, new Date(2026, 9, 31, 23, 59, 30).getTime())
+  world(on, { held: { exitCode: 0, stdout: DATED } })
+  await start($, clock)
+  const ui = await mountPane($, 'desktop')
+
+  expect(await ui.find({ type: 'Button', key: 'decide-tomorrow' })).toBeUndefined()
+  await clock.advance(MINUTE)
+  expect(await ui.find({ type: 'Button', key: 'decide-tomorrow' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('x hides the row and the band count, touching no task', async ($, on) => {
+  const clock = clockAt(on)
+  const calls = world(on, { held: { exitCode: 0, stdout: HELD } })
+
+  await start($, clock)
+  const ui = await mountPane($, 'desktop')
+  const band = await mountBand($, 'desktop')
+
+  await ui.press({ key: 'hide-pick-one' })
+  expect(await ui.find({ type: 'Button', key: 'decide-pick-one' })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'decide-long-title' })).toBeDefined()
+  expect((await band.find({ type: 'Button', key: 'open' }))?.props.label).toBe('1 decision waiting')
+  expect(calls.holds).toEqual([])
+  expect(calls.argv.length).toBe(1)
+  expect(calls.writes).toBe(0)
+
+  await clock.advance(MINUTE)
+  expect(await ui.find({ type: 'Button', key: 'decide-pick-one' })).toBeUndefined()
+  await ui.unmount()
+  await band.unmount()
+})
+
+test('a row hidden in an earlier session stays hidden', async ($, on) => {
+  const clock = clockAt(on, LAST_OF_OCTOBER, { 'pick-one': true })
+  world(on, { held: { exitCode: 0, stdout: HELD } })
+  await start($, clock)
+  const ui = await mountPane($, 'desktop')
+
+  expect(await ui.find({ type: 'Button', key: 'decide-pick-one' })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'decide-long-title' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('postpone re-holds with the reason given back and tomorrow, across a month end', async ($, on) => {
+  const clock = clockAt(on)
   const calls = world(on, { held: { exitCode: 0, stdout: HELD } })
 
   await start($, clock)
   const ui = await mountPane($, 'desktop')
 
-  await ui.press({ key: 'decide-long-title' })
-  expect(calls.prompts).toEqual([
-    'Explain the decision on long-title in plain words, what happens under each answer and what you recommend, then ask me for it.',
-  ])
+  await ui.press({ key: 'postpone-long-title' })
+  expect(calls.holds).toEqual([[HOLD, 'hold', 'long-title', '--reason', 'Second\nline', '--until', '2026-11-01']])
+  expect(await ui.find({ type: 'Button', key: 'decide-long-title' })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'decide-pick-one' })).toBeDefined()
+  expect(calls.toasts).toEqual([])
+  await ui.unmount()
+})
+
+test('a refused postpone keeps the row and says why', async ($, on) => {
+  const clock = clockAt(on)
+  const calls = world(on, {
+    held: { exitCode: 0, stdout: HELD },
+    hold: { exitCode: 1, stdout: '', stderr: 'fm-captain-hold: task pick-one is already closed\n' },
+  })
+
+  await start($, clock)
+  const ui = await mountPane($, 'desktop')
+
+  await ui.press({ key: 'postpone-pick-one' })
+  expect(await ui.find({ type: 'Button', key: 'decide-pick-one' })).toBeDefined()
+  expect(calls.toasts).toEqual(['Could not postpone pick-one: fm-captain-hold: task pick-one is already closed'])
+  await ui.unmount()
+})
+
+test('Decide shows a loading line at once, then the explanation, and starts no turn', async ($, on) => {
+  const clock = clockAt(on)
+  let answer: (result: ModelAnswer) => void = () => undefined
+  const calls = world(on, {
+    held: { exitCode: 0, stdout: HELD },
+    model: new Promise<ModelAnswer>(resolve => {
+      answer = resolve
+    }),
+  })
+
+  await start($, clock)
+  const ui = await mountPane($, 'desktop')
+
+  await ui.press({ key: 'decide-pick-one' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: 'Explaining...' })).toBeDefined()
+  expect(calls.models.length).toBe(1)
+
+  await ui.press({ key: 'decide-pick-one' })
+  await clock.settle()
+  expect(calls.models.length).toBe(1)
+
+  answer(ANSWERED)
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: 'Explaining...' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: 'Odluka je jednostavna.' })).toBeDefined()
+  expect(calls.prompts).toEqual([])
   expect(calls.writes).toBe(0)
-  expect(calls.argv.length).toBe(1)
+  await ui.unmount()
+})
+
+test('Decide asks sonnet in Serbian with the title, reason and record', async ($, on) => {
+  const clock = clockAt(on)
+  const calls = world(on, { held: { exitCode: 0, stdout: HELD } })
+
+  await start($, clock)
+  const ui = await mountPane($, 'desktop')
+
+  await ui.press({ key: 'decide-pick-one' })
+  await clock.settle()
+
+  const [asked] = calls.models
+
+  expect(calls.shows).toEqual([[SCRIPT, 'show', 'pick-one', '--full']])
+  expect(asked?.model).toBe('sonnet')
+  expect(asked?.system).toMatch(/Serbian/)
+  expect(asked?.system).toMatch(/what happens under each answer and what you recommend/)
+  expect(asked?.prompt).toContain('Title: Pick one, or the other')
+  expect(asked?.prompt).toContain('Hold reason: Captain 2026-10-31: decide, and soon')
+  expect(asked?.prompt).toContain(RECORD)
+  expect(asked?.prompt).not.toContain('Report the record names')
+  expect(calls.reads).toEqual([])
+  await ui.unmount()
+})
+
+test('Decide passes the report the record names, and goes on when it cannot be read', async ($, on) => {
+  const clock = clockAt(on)
+  const answers = {
+    held: { exitCode: 0, stdout: HELD },
+    show: { exitCode: 0, stdout: `${RECORD}  links: "report:${REPORT_PATH}"\n` },
+  }
+  const calls = world(on, answers)
+
+  await start($, clock)
+  const ui = await mountPane($, 'desktop')
+
+  await ui.press({ key: 'decide-pick-one' })
+  await clock.settle()
+  expect(calls.reads).toEqual([`${HOME}/${REPORT_PATH}`])
+  expect(calls.models[0]?.prompt).toContain('What the report found.')
+
+  answers.show = { exitCode: 0, stdout: `${RECORD}  body: "see data/gone-task/report.md"\n` }
+  await ui.press({ key: 'decide-long-title' })
+  await clock.settle()
+  expect(calls.reads[1]).toBe(`${HOME}/data/gone-task/report.md`)
+  expect(calls.models[1]?.prompt).not.toContain('Report the record names')
+  await ui.unmount()
+})
+
+test('a failed call shows its reason under the row and a new press tries again', async ($, on) => {
+  const clock = clockAt(on)
+  const answers: { held: Answer; model: ModelAnswer } = {
+    held: { exitCode: 0, stdout: HELD },
+    model: { isAnswered: false, reason: 'api-error', status: 429, error: 'rate_limit', usage: USAGE },
+  }
+
+  world(on, answers)
+  await start($, clock)
+  const ui = await mountPane($, 'desktop')
+
+  await ui.press({ key: 'decide-pick-one' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: 'Could not explain: api-error 429 rate_limit' })).toBeDefined()
+
+  answers.model = { isAnswered: false, reason: 'aborted', usage: USAGE }
+  await ui.press({ key: 'decide-pick-one' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: 'Could not explain: aborted' })).toBeDefined()
+
+  answers.model = 'throw'
+  await ui.press({ key: 'decide-pick-one' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: /^Could not explain: .*blocked model/ })).toBeDefined()
+
+  answers.model = ANSWERED
+  await ui.press({ key: 'decide-pick-one' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: 'Odluka je jednostavna.' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a record that cannot be read shows why and makes no call', async ($, on) => {
+  const clock = clockAt(on)
+  const calls = world(on, {
+    held: { exitCode: 0, stdout: HELD },
+    show: { exitCode: 2, stdout: '', stderr: 'code: NOT_FOUND\n' },
+  })
+
+  await start($, clock)
+  const ui = await mountPane($, 'desktop')
+
+  await ui.press({ key: 'decide-pick-one' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: 'Could not read pick-one: code: NOT_FOUND' })).toBeDefined()
+  expect(calls.models).toEqual([])
+  await ui.unmount()
+})
+
+test('an explanation leaves with its row', async ($, on) => {
+  const clock = clockAt(on)
+  world(on, { held: { exitCode: 0, stdout: HELD } })
+  await start($, clock)
+  const ui = await mountPane($, 'desktop')
+
+  await ui.press({ key: 'decide-pick-one' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: 'Odluka je jednostavna.' })).toBeDefined()
+
+  await ui.press({ key: 'postpone-pick-one' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: 'Odluka je jednostavna.' })).toBeUndefined()
   await ui.unmount()
 })
 
 test('the timer rereads the panel from the same list', async ($, on) => {
-  const clock = mock.clock(on)
+  const clock = clockAt(on)
   const answers: { held: Answer } = { held: { exitCode: 0, stdout: HELD } }
   const calls = world(on, answers)
 
@@ -213,7 +509,7 @@ test('the timer rereads the panel from the same list', async ($, on) => {
 })
 
 test('a reread of the same list writes nothing, a changed one writes once', async ($, on) => {
-  const clock = mock.clock(on)
+  const clock = clockAt(on)
   const answers: { held: Answer } = { held: { exitCode: 0, stdout: HELD } }
   let sets = 0
 
@@ -236,7 +532,7 @@ test('a reread of the same list writes nothing, a changed one writes once', asyn
 })
 
 test('the timer rereads about every 60 seconds and the band follows', async ($, on) => {
-  const clock = mock.clock(on)
+  const clock = clockAt(on)
   const answers: { held: Answer } = { held: { exitCode: 0, stdout: 'count: 0\ntasks: 0 held tasks\n' } }
   const calls = world(on, answers)
 
@@ -254,7 +550,7 @@ test('the timer rereads about every 60 seconds and the band follows', async ($, 
 })
 
 test('one decision reads in the singular', async ($, on) => {
-  const clock = mock.clock(on)
+  const clock = clockAt(on)
   const one = 'tasks[1]{id,state,kind,repo,title,hold_kind,hold_reason}:\n  a,queued,task,"-",A,captain,Pick\n'
 
   world(on, { held: { exitCode: 0, stdout: one } })
@@ -266,20 +562,27 @@ test('one decision reads in the singular', async ($, on) => {
 })
 
 test('control characters never reach the panel', async ($, on) => {
-  const clock = mock.clock(on)
+  const clock = clockAt(on)
   const raw = 'tasks[1]{id,state,kind,repo,title,hold_kind,hold_reason}:\n  a,queued,task,"-","\\u001b[31mRed",captain,"One\\u0007\\nTwo\\u009b"\n'
 
-  world(on, { held: { exitCode: 0, stdout: raw } })
+  world(on, {
+    held: { exitCode: 0, stdout: raw },
+    model: { isAnswered: true, text: '\u001b[31mCrveno', usage: USAGE },
+  })
   await start($, clock)
   const ui = await mountPane($, 'terminal')
 
   expect(await ui.find({ type: 'Text', text: '[31mRed' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: 'One\nTwo' })).toBeDefined()
+
+  await ui.press({ key: 'decide-a' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: '[31mCrveno' })).toBeDefined()
   await ui.unmount()
 })
 
 test('a failed read keeps the last list and the timer running', async ($, on) => {
-  const clock = mock.clock(on)
+  const clock = clockAt(on)
   const answers: { held: Answer } = { held: { exitCode: 0, stdout: HELD } }
   const calls = world(on, answers)
 
@@ -299,7 +602,7 @@ test('a failed read keeps the last list and the timer running', async ($, on) =>
 })
 
 test('a survey keeps the band', async ($, on) => {
-  const clock = mock.clock(on)
+  const clock = clockAt(on)
   world(on, { held: { exitCode: 0, stdout: HELD } })
   await start($, clock)
   const ui = await mountBand($, 'desktop', true)
@@ -310,7 +613,7 @@ test('a survey keeps the band', async ($, on) => {
 })
 
 test('outside a firstmate home nothing runs and the band passes through', async ($, on) => {
-  const clock = mock.clock(on)
+  const clock = clockAt(on)
   const calls = world(on, { held: { exitCode: 0, stdout: HELD } }, { root: '/some/other/project' })
 
   await start($, clock)
@@ -323,7 +626,7 @@ test('outside a firstmate home nothing runs and the band passes through', async 
 })
 
 test('a repo with every marker file at another path runs nothing and passes through', async ($, on) => {
-  const clock = mock.clock(on)
+  const clock = clockAt(on)
   const repo = `${HOME}-copy`
   const markers = [`${repo}/bin/fm-crew-state.sh`, `${repo}/bin/fm-tasks-axi.sh`]
   const calls = world(on, { held: { exitCode: 0, stdout: HELD } }, { root: repo })
@@ -347,7 +650,7 @@ test('a repo with every marker file at another path runs nothing and passes thro
 })
 
 test('a session moved out of the home stops reading and passes through', async ($, on) => {
-  const clock = mock.clock(on)
+  const clock = clockAt(on)
   const session = { root: HOME }
   const calls = world(on, { held: { exitCode: 0, stdout: HELD } }, session)
 
@@ -385,7 +688,7 @@ const SHIP = {
 }
 
 test('with the ship in the band both draw', { plugins: [SHIP] }, async ($, on) => {
-  const clock = mock.clock(on)
+  const clock = clockAt(on)
   world(on, { held: { exitCode: 0, stdout: HELD } })
   await start($, clock)
   const ui = await mountBand($, 'desktop')
