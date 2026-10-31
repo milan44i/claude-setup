@@ -1,0 +1,6 @@
+{
+  "name": "parrot",
+  "version": "0.1.0",
+  "description": "Squawks a one-line summary of a long reply above the prompt",
+  "types": "./types/index.d.ts"
+}
