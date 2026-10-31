@@ -1,3 +1,5 @@
+import type { SeaState } from '../types'
+
 // The app clamps the frame to the band, so an oversized width makes it fill the text column
 export const SHIP_WIDTH = 4096
 export const SHIP_HEIGHT = 46
@@ -5,16 +7,11 @@ const DRIFT_SECONDS = 200
 
 const BOAT_WIDTH = 40
 const BOAT_Y = 10.5
-const BOB = 0.8
-const BOB_SECONDS = 3.7
-const ROCK_DEGREES = 3
-const ROCK_SECONDS = 5.3
 const ROCK_X = 20
 const ROCK_Y = 26
 
 const BACK_LEVEL = 39.5
 const FRONT_LEVEL = 41
-const WAVE_AMPLITUDE = 1
 
 const SWELL_SECONDS = 60
 const SWELL_START = 4
@@ -30,12 +27,16 @@ const RIDE_LIFT = 8.5
 const RIDE_SECONDS = 1.7
 const RIDE_DEGREES = 7
 
+const KRAKEN_SECONDS = 30
+
 const SPLINE = '.45 0 .55 1'
 const EASE = `calcMode="spline" keyTimes="0;.5;1" keySplines="${SPLINE};${SPLINE}" repeatCount="indefinite"`
 
 // One mid tone per part reads on light and dark alike, since prefers-color-scheme in the
 // sandboxed frame need not match the theme the app is set to
 const WATER = '#5769f7'
+const STORM_WATER = '#4a5578'
+const NIGHT_WATER = '#2c3a86'
 const WOOD = '#a86b36'
 const TIMBER = '#7a4e28'
 const CANVAS = '#eadfc6'
@@ -45,6 +46,20 @@ const FLAG_EDGE = '#d9d2c0'
 const BONE = '#f4f1e8'
 const STRAW = '#e8b93a'
 const RIBBON = '#d0312d'
+const FLAME = '#ffb02e'
+const RAIN = '#9fb0d0'
+const BOLT = '#ffe680'
+const KRAKEN = '#8a3f9e'
+const SUCKER = '#e3b7ec'
+
+export type Scene = { sea: SeaState; isNight: boolean; hasKraken: boolean }
+
+const SEAS = {
+  calm: { amplitude: 1, backSeconds: 30, frontSeconds: 16, bob: 0.8, bobSeconds: 3.7, rock: 3, rockSeconds: 5.3 },
+  rough: { amplitude: 2, backSeconds: 20, frontSeconds: 11, bob: 1.3, bobSeconds: 2.8, rock: 6, rockSeconds: 4 },
+  heavy: { amplitude: 3.2, backSeconds: 13, frontSeconds: 7, bob: 1.9, bobSeconds: 2.1, rock: 10, rockSeconds: 3 },
+  storm: { amplitude: 4.5, backSeconds: 9, frontSeconds: 5, bob: 2.6, bobSeconds: 1.6, rock: 14, rockSeconds: 2.2 },
+} as const
 
 const swellClock = (seconds: number[]) => {
   const keyTimes = seconds.map(second => (second / SWELL_SECONDS).toFixed(4)).join(';')
@@ -74,32 +89,33 @@ const wave = (
   wavelength: number,
   seconds: number,
   isRightward: boolean,
+  water: string,
 ) => {
   const [from, to] = isRightward ? [0, wavelength] : [wavelength, 0]
 
-  return `<path d="${wavePath(level, amplitude, wavelength)}" fill="${WATER}">
+  return `<path d="${wavePath(level, amplitude, wavelength)}" fill="${water}">
 <animateTransform attributeName="transform" type="translate" from="${from} 0" to="${to} 0" dur="${seconds}s" repeatCount="indefinite"/>
 </path>`
 }
 
 // The hump's foot sits below the wave's trough, so it rises out of the water with no step at its edges
-const humpPath = (level: number, crest: number) => {
+const humpPath = (level: number, crest: number, amplitude: number) => {
   const half = SWELL_HALF_WIDTH
-  const foot = level + WAVE_AMPLITUDE
+  const foot = level + amplitude
 
   return `M${-half} ${SHIP_HEIGHT}V${foot}C${-half / 2} ${foot} ${-half / 2} ${crest} 0 ${crest}S${half / 2} ${foot} ${half} ${foot}V${SHIP_HEIGHT}Z`
 }
 
 // The crest travels in the boat's own frame, so it reaches the boat on cue at any frame width
-const swell = (level: number, height: number) => {
-  const flat = humpPath(level, level + WAVE_AMPLITUDE)
-  const full = humpPath(level, level - height)
+const swell = (level: number, height: number, amplitude: number, water: string) => {
+  const flat = humpPath(level, level + amplitude, amplitude)
+  const full = humpPath(level, level - height, amplitude)
   const center = BOAT_WIDTH / 2
   const [left, right] = [center - SWELL_REACH, center + SWELL_REACH]
 
   return `<g>
 <animateTransform attributeName="transform" type="translate" values="${left} 0;${left} 0;${right} 0;${right} 0" ${swellClock([0, SWELL_START, SWELL_END, SWELL_SECONDS])}/>
-<path d="${flat}" fill="${WATER}">
+<path d="${flat}" fill="${water}">
 <animate attributeName="d" values="${flat};${flat};${full};${full};${flat};${flat}" ${swellTiming([0, SWELL_START, SWELL_BUILT, SWELL_FADING, SWELL_END, SWELL_SECONDS])}/>
 </path>
 </g>`
@@ -136,30 +152,103 @@ ${SKULL_FLAG}
 <circle cx="20" cy="24.8" r="0.9" fill="${TIMBER}"/>
 <circle cx="28" cy="24.6" r="0.9" fill="${TIMBER}"/>`
 
-const BOAT = `<g>
-<animateTransform attributeName="transform" type="translate" values="0 ${BOAT_Y};0 ${BOAT_Y};0 ${BOAT_Y - RIDE_LIFT};0 ${BOAT_Y};0 ${BOAT_Y}" ${swellTiming([0, RIDE_START, SWELL_CREST, RIDE_END, SWELL_SECONDS])}/>
+const LANTERN = `<title>This lantern is the night watch, lit from 20:00 to 06:00 local time.</title>
+<circle cx="4.5" cy="14" r="6" fill="${FLAME}" opacity="0.35">
+<animate attributeName="opacity" values="0.25;0.5;0.3;0.55;0.25" dur="2.3s" repeatCount="indefinite"/>
+</circle>
+<path d="M4.5 18.5V11.5" stroke="${TIMBER}" stroke-width="0.8" fill="none"/>
+<path d="M3 12.5H6V15.5H3Z" fill="${FLAME}" stroke="${TIMBER}" stroke-width="0.5"/>`
+
+const boat = ({ sea, isNight }: Scene) => {
+  const { bob, bobSeconds, rock, rockSeconds } = SEAS[sea]
+  // A taller bob takes the same height off the ride, so the flag stays inside the frame
+  const crest = BOAT_Y - RIDE_LIFT + (bob - SEAS.calm.bob)
+
+  return `<g>
+<animateTransform attributeName="transform" type="translate" values="0 ${BOAT_Y};0 ${BOAT_Y};0 ${crest};0 ${BOAT_Y};0 ${BOAT_Y}" ${swellTiming([0, RIDE_START, SWELL_CREST, RIDE_END, SWELL_SECONDS])}/>
 <g>
-<animateTransform attributeName="transform" type="translate" values="0 ${-BOB};0 ${BOB};0 ${-BOB}" dur="${BOB_SECONDS}s" ${EASE}/>
+<animateTransform attributeName="transform" type="translate" values="0 ${-bob};0 ${bob};0 ${-bob}" dur="${bobSeconds}s" ${EASE}/>
 <g>
-<animateTransform attributeName="transform" type="rotate" values="${-ROCK_DEGREES} ${ROCK_X} ${ROCK_Y};${ROCK_DEGREES} ${ROCK_X} ${ROCK_Y};${-ROCK_DEGREES} ${ROCK_X} ${ROCK_Y}" dur="${ROCK_SECONDS}s" ${EASE}/>
+<animateTransform attributeName="transform" type="rotate" values="${-rock} ${ROCK_X} ${ROCK_Y};${rock} ${ROCK_X} ${ROCK_Y};${-rock} ${ROCK_X} ${ROCK_Y}" dur="${rockSeconds}s" ${EASE}/>
 <g>
 <animateTransform attributeName="transform" type="rotate" values="0 ${ROCK_X} ${ROCK_Y};0 ${ROCK_X} ${ROCK_Y};${RIDE_DEGREES} ${ROCK_X} ${ROCK_Y};0 ${ROCK_X} ${ROCK_Y};${-RIDE_DEGREES} ${ROCK_X} ${ROCK_Y};0 ${ROCK_X} ${ROCK_Y};0 ${ROCK_X} ${ROCK_Y}" ${swellTiming([0, RIDE_START, SWELL_CREST - RIDE_SECONDS / 2, SWELL_CREST, SWELL_CREST + RIDE_SECONDS / 2, RIDE_END, SWELL_SECONDS])}/>
 ${PIRATE_SHIP}
+${isNight ? `<g>${LANTERN}</g>` : ''}
 </g>
 </g>
 </g>
 </g>`
+}
 
-export const SHIP_ALT = 'A small wooden pirate ship under a straw-hat skull flag, floating and riding over a swell'
+// It rises, grips the hull and sinks on its own clock, ending hidden below the frame
+const TENTACLE = `<g>
+<title>The Kraken grips the ship for 30 seconds when one tool result passes about 10k tokens.</title>
+<animateTransform attributeName="transform" type="translate" values="0 32;0 0;0 0;0 32" keyTimes="0;.06;.94;1" dur="${KRAKEN_SECONDS}s" fill="freeze"/>
+<g>
+<animateTransform attributeName="transform" type="rotate" values="-5 30 46;5 30 46;-5 30 46" dur="2.6s" ${EASE}/>
+<path d="M31 46C37 36 35 25 26 22" stroke="${KRAKEN}" stroke-width="3.6" stroke-linecap="round" fill="none"/>
+<path d="M26 22C20 20 13 23 14 28C14.6 31 18.5 30.5 18 27.5" stroke="${KRAKEN}" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+<circle cx="33.6" cy="36" r="0.8" fill="${SUCKER}"/>
+<circle cx="33" cy="30" r="0.8" fill="${SUCKER}"/>
+<circle cx="29.6" cy="25.2" r="0.7" fill="${SUCKER}"/>
+<circle cx="23" cy="21.8" r="0.6" fill="${SUCKER}"/>
+<circle cx="17" cy="23.2" r="0.6" fill="${SUCKER}"/>
+</g>
+</g>`
+
+const RAIN_PATTERN = `<defs>
+<pattern id="rain" width="26" height="46" patternUnits="userSpaceOnUse">
+<animateTransform attributeName="patternTransform" type="translate" from="0 0" to="-13 46" dur="0.7s" repeatCount="indefinite"/>
+<path d="M22 2L20 8M9 14L7 20M18 27L16 33M4 36L2 42" stroke="${RAIN}" stroke-width="0.8"/>
+</pattern>
+</defs>
+<rect width="${SHIP_WIDTH}" height="${SHIP_HEIGHT}" fill="url(#rain)"/>`
+
+const LIGHTNING = `<svg x="68%" overflow="visible">
+<path d="M12 0L4 15H10L5 30L19 11H12L17 0Z" fill="${BOLT}" opacity="0">
+<animate attributeName="opacity" values="0;0;1;0.1;1;0;0" keyTimes="0;.7;.71;.73;.75;.78;1" dur="7s" repeatCount="indefinite"/>
+</path>
+</svg>`
+
+const waterOf = ({ sea, isNight }: Scene) => {
+  if (isNight) return NIGHT_WATER
+
+  return sea === 'storm' ? STORM_WATER : WATER
+}
+
+const SEA_TITLES = {
+  calm: 'This ship shows the session, and the sea is calm because the context is under 60 percent full.',
+  rough: 'This ship shows the session, and the sea is rough because the context is at least 60 percent full.',
+  heavy: 'This ship shows the session, and the sea is heavy because the context is at least 80 percent full.',
+  storm: 'This ship shows the session, and the storm means a recorded PR has a failing check.',
+} as const
+
+const seaWords = { calm: 'a calm sea', rough: 'a rough sea', heavy: 'a heavy sea', storm: 'a storm' } as const
+
+export const shipAlt = ({ sea, isNight, hasKraken }: Scene) =>
+  [
+    `A small wooden pirate ship under a straw-hat skull flag, floating on ${seaWords[sea]} and riding over a swell`,
+    isNight ? ', its lantern lit on a dark sea' : '',
+    hasKraken ? ', a tentacle gripping its hull' : '',
+  ].join('')
 
 // The markup has no viewBox so its units stay CSS pixels at any frame width. The group opacity
 // makes the back wave and its swell read as one body of water where they overlap
-export const SHIP_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="${SHIP_WIDTH}" height="${SHIP_HEIGHT}">
+export const shipSvg = (scene: Scene) => {
+  const { amplitude, backSeconds, frontSeconds } = SEAS[scene.sea]
+  const water = waterOf(scene)
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${SHIP_WIDTH}" height="${SHIP_HEIGHT}">
+<title>${SEA_TITLES[scene.sea]}</title>
+<rect width="${SHIP_WIDTH}" height="${SHIP_HEIGHT}" fill="transparent"/>
+${scene.sea === 'storm' ? `${RAIN_PATTERN}\n${LIGHTNING}` : ''}
 <g opacity="0.45">
-${wave(BACK_LEVEL, WAVE_AMPLITUDE, 150, 30, false)}
-${drifting(swell(BACK_LEVEL, BACK_SWELL))}
+${wave(BACK_LEVEL, amplitude, 150, backSeconds, false, water)}
+${drifting(swell(BACK_LEVEL, BACK_SWELL, amplitude, water))}
 </g>
-${drifting(BOAT)}
-${wave(FRONT_LEVEL, WAVE_AMPLITUDE, 96, 16, true)}
-${drifting(swell(FRONT_LEVEL, FRONT_SWELL))}
+${drifting(boat(scene))}
+${scene.hasKraken ? drifting(TENTACLE) : ''}
+${wave(FRONT_LEVEL, amplitude, 96, frontSeconds, true, water)}
+${drifting(swell(FRONT_LEVEL, FRONT_SWELL, amplitude, water))}
 </svg>`
+}

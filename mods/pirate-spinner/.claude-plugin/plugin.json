@@ -1,0 +1,6 @@
+{
+  "name": "pirate-spinner",
+  "version": "0.1.0",
+  "description": "Swaps the working words for One Piece crew doing the job of the running tool",
+  "types": "./types/index.d.ts"
+}
