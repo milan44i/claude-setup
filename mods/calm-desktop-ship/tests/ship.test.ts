@@ -81,6 +81,7 @@ test('desktop with Calm on draws an interactive Svg, read only', async ($, on) =
   expect(String(svg?.props.alt)).toMatch(/sailboat/)
   expect(source.length).toBeLessThan(131072)
   expect(source).toMatch(/<animateTransform [^>]*repeatCount="indefinite"/)
+  expect(source).toMatch(/<animateTransform [^>]*type="rotate"[^>]*calcMode="spline"/)
   expect(source).not.toMatch(/<script|\son\w+=/)
   expect(await ui.find({ type: 'Text', text: STOCK })).toBeUndefined()
   expect(calls).toEqual([])

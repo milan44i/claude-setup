@@ -1,89 +1,64 @@
-const CELL_WIDTH = 8
-const CELL_HEIGHT = 16
-const COLUMNS = 60
-const HULL_COLUMNS = 5
-const HULL_CENTER = 2
-const SPAN = COLUMNS - HULL_COLUMNS
-const SECONDS_PER_COLUMN = 0.88
+const WIDTH = 480
+const HEIGHT = 32
+const TRAVEL = 440
+const DRIFT_SECONDS = 96
 
-const BASELINE = CELL_HEIGHT * 2
-const LEVEL_HEIGHT = CELL_HEIGHT / 8
-const MAX_LEVEL = 3
-const HALF_LENGTH_MIN = 9
-const HALF_LENGTH_SPAN = 5
-const TROUGH_RADIUS = 5
+const BOAT_Y = 1
+const BOB = 1.2
+const BOB_SECONDS = 3.7
+const ROCK_DEGREES = 3
+const ROCK_SECONDS = 5.3
+const ROCK_X = 20
+const ROCK_Y = 26
+
+const EASE = 'calcMode="spline" keyTimes="0;.5;1" keySplines=".45 0 .55 1;.45 0 .55 1" repeatCount="indefinite"'
 
 // One mid tone per part reads on light and dark alike, since prefers-color-scheme in the
 // sandboxed frame need not match the theme the app is set to
 const WATER = '#5769f7'
 const BOAT = '#d77757'
 
-const halfWaveLength = (index: number, isNegative: boolean) => {
-  let value = ((isNegative ? 0xc411 : 0x5ea1) + Math.imul(index + 1, 0x9e3779b1)) >>> 0
-  value ^= value >>> 16
-  value = Math.imul(value, 0x7feb352d) >>> 0
-  value ^= value >>> 15
-  value >>>= 0
+const wavePath = (level: number, amplitude: number, wavelength: number) => {
+  const start = -wavelength
+  const halves = 2 * Math.ceil((WIDTH + wavelength) / wavelength)
+  let path = `M${start} ${HEIGHT}V${level}q${wavelength / 4} ${-2 * amplitude} ${wavelength / 2} 0`
 
-  return HALF_LENGTH_MIN + (value % HALF_LENGTH_SPAN)
+  for (let half = 1; half < halves; half += 1) path += `t${wavelength / 2} 0`
+
+  return `${path}V${HEIGHT}Z`
 }
 
-const smoothstep = (value: number) => value * value * (3 - 2 * value)
+const wave = (
+  level: number,
+  amplitude: number,
+  wavelength: number,
+  seconds: number,
+  isRightward: boolean,
+  opacity: number,
+) => {
+  const [from, to] = isRightward ? [0, wavelength] : [wavelength, 0]
 
-const waveAmplitude = (coordinate: number) => {
-  let distance = Math.abs(coordinate)
-  let isRising = true
-
-  for (let index = 0; ; index += 1) {
-    const length = halfWaveLength(index, coordinate < 0)
-
-    if (distance <= length) {
-      const eased = smoothstep(distance / length)
-
-      return (isRising ? eased : 1 - eased) * MAX_LEVEL
-    }
-    distance -= length
-    isRising = !isRising
-  }
+  return `<path d="${wavePath(level, amplitude, wavelength)}" fill="${WATER}" fill-opacity="${opacity}">
+<animateTransform attributeName="transform" type="translate" from="${from} 0" to="${to} 0" dur="${seconds}s" repeatCount="indefinite"/>
+</path>`
 }
 
-const waterHeight = (column: number) => {
-  if (column >= 0 && column < HULL_COLUMNS) return 0
+export const SHIP_ALT = 'A small sailboat floating and rocking on a gently moving swell'
 
-  const coordinate = column - HULL_CENTER
-  const level =
-    Math.abs(coordinate) <= TROUGH_RADIUS
-      ? 0
-      : Math.round(waveAmplitude(coordinate - Math.sign(coordinate) * TROUGH_RADIUS))
-
-  return (level + 1) * LEVEL_HEIGHT
-}
-
-const waterPath = () => {
-  let path = `M${-SPAN * CELL_WIDTH} ${BASELINE}`
-
-  for (let column = -SPAN; column < COLUMNS; column += 1) {
-    path += `V${BASELINE - waterHeight(column)}H${(column + 1) * CELL_WIDTH}`
-  }
-
-  return `${path}V${BASELINE}Z`
-}
-
-const WIDTH = COLUMNS * CELL_WIDTH
-const TRAVEL = SPAN * CELL_WIDTH
-const DURATION = 2 * SPAN * SECONDS_PER_COLUMN
-
-export const SHIP_ALT = 'A small sailboat travelling left and right over a moving swell'
-
-export const SHIP_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${BASELINE}" viewBox="0 0 ${WIDTH} ${BASELINE}">
+export const SHIP_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">
+${wave(27, 1.5, 150, 30, false, 0.45)}
 <g>
-<animateTransform attributeName="transform" type="translate" values="0 0;${TRAVEL} 0;0 0" dur="${DURATION}s" repeatCount="indefinite"/>
-<path d="${waterPath()}" fill="${WATER}"/>
+<animateTransform attributeName="transform" type="translate" values="0 ${BOAT_Y};${TRAVEL} ${BOAT_Y};0 ${BOAT_Y}" dur="${DRIFT_SECONDS}s" ${EASE}/>
+<g>
+<animateTransform attributeName="transform" type="translate" values="0 ${-BOB};0 ${BOB};0 ${-BOB}" dur="${BOB_SECONDS}s" ${EASE}/>
 <g stroke="${BOAT}" stroke-width="2" fill="none">
-<path d="M1 16L8 31H32L39 16"/>
-<path d="M20 1V16"/>
+<animateTransform attributeName="transform" type="rotate" values="${-ROCK_DEGREES} ${ROCK_X} ${ROCK_Y};${ROCK_DEGREES} ${ROCK_X} ${ROCK_Y};${-ROCK_DEGREES} ${ROCK_X} ${ROCK_Y}" dur="${ROCK_SECONDS}s" ${EASE}/>
+<path d="M1 16L7 26H33L39 16"/>
+<path d="M20 1V26"/>
 <path d="M15 3V15H9Z" stroke-width="1"/>
 <path d="M24 1L31 15H24Z" fill="${BOAT}" stroke-width="1"/>
 </g>
 </g>
+</g>
+${wave(29, 1.5, 96, 16, true, 1)}
 </svg>`
