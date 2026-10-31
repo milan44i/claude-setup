@@ -1,16 +1,17 @@
 // The app clamps the frame to the row, so an oversized width makes it fill the text column
 export const SHIP_WIDTH = 4096
-export const SHIP_HEIGHT = 32
+// The app clips the row to one line of text, so anything drawn lower never shows
+export const SHIP_HEIGHT = 20
 const DRIFT_SECONDS = 200
 
-const BOAT_WIDTH = 40
-const BOAT_Y = 1
-const BOB = 1.2
+const BOAT_WIDTH = 28
+const BOAT_Y = 0.5
+const BOB = 0.8
 const BOB_SECONDS = 3.7
 const ROCK_DEGREES = 3
 const ROCK_SECONDS = 5.3
-const ROCK_X = 20
-const ROCK_Y = 26
+const ROCK_X = 14
+const ROCK_Y = 16
 
 const EASE = 'calcMode="spline" keyTimes="0;.5;1" keySplines=".45 0 .55 1;.45 0 .55 1" repeatCount="indefinite"'
 
@@ -49,22 +50,22 @@ export const SHIP_ALT = 'A small sailboat floating and rocking on a gently movin
 // The markup has no viewBox so its units stay CSS pixels at any frame width, and the boat's
 // range is a percentage of that width less its own width, in two animations on one clock
 export const SHIP_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="${SHIP_WIDTH}" height="${SHIP_HEIGHT}">
-${wave(27, 1.5, 150, 30, false, 0.45)}
+${wave(16.5, 1, 150, 30, false, 0.45)}
 <svg overflow="visible">
 <animate attributeName="x" values="0%;100%;0%" dur="${DRIFT_SECONDS}s" ${EASE}/>
 <g>
 <animateTransform attributeName="transform" type="translate" values="0 ${BOAT_Y};${-BOAT_WIDTH} ${BOAT_Y};0 ${BOAT_Y}" dur="${DRIFT_SECONDS}s" ${EASE}/>
 <g>
 <animateTransform attributeName="transform" type="translate" values="0 ${-BOB};0 ${BOB};0 ${-BOB}" dur="${BOB_SECONDS}s" ${EASE}/>
-<g stroke="${BOAT}" stroke-width="2" fill="none">
+<g stroke="${BOAT}" stroke-width="1.5" fill="none">
 <animateTransform attributeName="transform" type="rotate" values="${-ROCK_DEGREES} ${ROCK_X} ${ROCK_Y};${ROCK_DEGREES} ${ROCK_X} ${ROCK_Y};${-ROCK_DEGREES} ${ROCK_X} ${ROCK_Y}" dur="${ROCK_SECONDS}s" ${EASE}/>
-<path d="M1 16L7 26H33L39 16"/>
-<path d="M20 1V26"/>
-<path d="M15 3V15H9Z" stroke-width="1"/>
-<path d="M24 1L31 15H24Z" fill="${BOAT}" stroke-width="1"/>
+<path d="M1 9L5 16H23L27 9"/>
+<path d="M14 1V16"/>
+<path d="M10.5 2.5V9H6.5Z" stroke-width="0.75"/>
+<path d="M17 1.5L22 9H17Z" fill="${BOAT}" stroke-width="0.75"/>
 </g>
 </g>
 </g>
 </svg>
-${wave(29, 1.5, 96, 16, true, 1)}
+${wave(18, 1, 96, 16, true, 1)}
 </svg>`
