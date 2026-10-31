@@ -1,0 +1,6 @@
+{
+  "name": "log-pose",
+  "version": "0.1.0",
+  "description": "Points a compass at the next deadline above the prompt in a firstmate home",
+  "types": "./types/index.d.ts"
+}
