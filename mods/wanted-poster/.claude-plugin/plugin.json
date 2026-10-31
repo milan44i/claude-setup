@@ -1,0 +1,6 @@
+{
+  "name": "wanted-poster",
+  "version": "0.1.0",
+  "description": "/wanted opens a parchment poster with the captain's bounty from merged PRs and paid invoices",
+  "types": "./types/index.d.ts"
+}
