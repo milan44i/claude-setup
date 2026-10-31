@@ -58,13 +58,13 @@ const start = async ($: Engine, clock: MockClock) => {
   await clock.settle()
 }
 
-const mountBand = ($: Engine, surface: 'terminal' | 'desktop', hasSurvey = false) =>
+const mountBand = ($: Engine, surface: 'terminal' | 'desktop', hasSurvey = false, offset = 0) =>
   $.ui.mount({
     plugin: 'decisions-band',
     surface,
     component: 'AbovePrompt',
     requestId: 'above-prompt',
-    props: { hasSurvey, isWorking: false, maxRows: 12, bodyColumns: 80, scroll: { offset: 0, bodyRows: 12 }, view: {} },
+    props: { hasSurvey, isWorking: false, maxRows: 12, bodyColumns: 80, scroll: { offset, bodyRows: 12 }, view: {} },
   })
 
 test('a home reads the held list through its own script, read only', async ($, on) => {
@@ -133,6 +133,36 @@ test('expanded lists each decision with one Decide button', async ($, on) => {
     expect(await ui.find({ type: 'Button', key: 'decide-pick-one' })).toBeUndefined()
     await ui.unmount()
   }
+})
+
+test('the close x shows only while open, follows the scrolled window and only closes the list', async ($, on) => {
+  const clock = mock.clock(on)
+  const calls = world(on, { held: { exitCode: 0, stdout: HELD } })
+  await start($, clock)
+
+  for (const surface of SURFACES) {
+    const collapsed = await mountBand($, surface)
+
+    expect(await collapsed.find({ type: 'Button', key: 'close' })).toBeUndefined()
+    await collapsed.press({ key: 'toggle' })
+    await collapsed.unmount()
+
+    const scrolled = await mountBand($, surface, false, 14)
+    const boxes = await scrolled.findAll({ type: 'Box' })
+
+    expect(boxes.map(box => box.props)).toContainEqual({ position: 'absolute', top: 14, right: 0 })
+    expect((await scrolled.find({ type: 'Button', key: 'close' }))?.props.label).toBe('Close decisions')
+
+    await scrolled.press({ key: 'close' })
+    expect(await scrolled.find({ type: 'Button', key: 'close' })).toBeUndefined()
+    expect(await scrolled.find({ type: 'Button', key: 'decide-pick-one' })).toBeUndefined()
+    expect((await scrolled.find({ type: 'Button', key: 'toggle' }))?.props.label).toBe('2 decisions waiting')
+    await scrolled.unmount()
+  }
+
+  expect(calls.prompts).toEqual([])
+  expect(calls.writes).toBe(0)
+  expect(calls.argv.length).toBe(1)
 })
 
 test('Decide submits the prompt and writes nothing', async ($, on) => {

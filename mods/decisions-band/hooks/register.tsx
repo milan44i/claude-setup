@@ -8,6 +8,8 @@ import { decidePrompt, parseDecisions, waitingLabel } from './decisions'
 const HOME = '/Users/milanstankovic/work/firstmate'
 const REFRESH_MS = 60_000
 const EXPLAINER = 'Lists the decisions waiting on you, click to open them.'
+const CLOSE_LABEL = 'Close decisions'
+const CLOSE_ROOM = 4
 
 const decisions = atom({ plugin: 'decisions-band', key: 'decisions' } as const, [] as readonly Decision[])
 const isOpen = atom({ plugin: 'decisions-band', key: 'isOpen' } as const, false)
@@ -57,7 +59,7 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
-        <Box key="band" flexDirection="column">
+        <Box key="band" flexDirection="column" paddingRight={CLOSE_ROOM}>
           <Button
             key="toggle"
             plain
@@ -77,9 +79,18 @@ export const register: Register = on => {
               />
             </Box>
           ))}
-          <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
-            <Text dimColor>{EXPLAINER}</Text>
-          </Box>
+          {rows.length > 0 ? (
+            // The band scrolls as one window with no sticky placement, so only the offset keeps the x in view
+            <Box position="absolute" top={e.props.scroll.offset} right={0}>
+              <Button key="close" plain label={CLOSE_LABEL} onPress={() => update($, isOpen, () => false)}>
+                x
+              </Button>
+            </Box>
+          ) : (
+            <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
+              <Text dimColor>{EXPLAINER}</Text>
+            </Box>
+          )}
         </Box>
         {beneath}
       </Box>
