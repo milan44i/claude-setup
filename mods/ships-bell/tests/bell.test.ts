@@ -3,6 +3,8 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 const HOME = '/Users/milanstankovic/work/firstmate'
+const BELL_FILE = `${HOME}/data/ships-bell-source/bell-trimmed.wav`
+const BELL_BYTES = 'QkVMTA=='
 const NO_OP = 'Captain, shipshape.'
 const HEADER = 'count: 2\ntasks[2]{id,state,kind,repo,title,hold_kind}:'
 const FOOTER = 'help[1]:\n  - Run `tasks-axi show <id>` for full notes on a task\n'
@@ -14,8 +16,9 @@ type Board = { rows: string[]; exitCode: number }
 
 const board = (rows: string[] = [OLD_ROW]): Board => ({ rows, exitCode: 0 })
 
-const world = (on: On, tasks: Board, root = HOME) => {
+const world = (on: On, tasks: Board, root = HOME, failing: { read?: boolean; play?: boolean } = {}) => {
   const rings: unknown[] = []
+  const reads: { path: string; as: string }[] = []
   const commands: (readonly string[])[] = []
 
   on('session.root', () => ({ value: root }))
@@ -32,7 +35,14 @@ const world = (on: On, tasks: Board, root = HOME) => {
       },
     }
   })
+  on('fs.read', (_, e) => {
+    reads.push({ path: e.path, as: e.as })
+
+    return failing.read ? { deny: 'ENOENT' } : { value: { base64: BELL_BYTES } }
+  })
   on('audio.play', (_, e) => {
+    if (failing.play) return { deny: 'no player' }
+
     rings.push(e.clip)
 
     return { value: undefined }
@@ -41,7 +51,7 @@ const world = (on: On, tasks: Board, root = HOME) => {
   on('prompt.submit', (_, e) => ({ text: e.text }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
 
-  return { rings, commands }
+  return { rings, commands, reads }
 }
 
 const startSession = ($: Engine) =>
@@ -67,13 +77,34 @@ const automatedTurn = async ($: Engine, answer: string) => {
   await endTurn($, answer)
 }
 
-test('a captain turn with an answer rings the bell asset once', async ($, on) => {
-  const { rings } = world(on, board())
+test('a captain turn with an answer plays the private file as wav bytes once', async ($, on) => {
+  const { rings, reads } = world(on, board())
 
   await startSession($)
   await captainTurn($, 'The site is live.')
 
-  expect(rings).toEqual([{ asset: 'sounds/bell.wav' }])
+  expect(reads).toEqual([{ path: BELL_FILE, as: 'bytes' }])
+  expect(rings).toEqual([{ base64: BELL_BYTES, mime: 'audio/wav' }])
+})
+
+test('a failed read of the bell file stays silent and ends the turn', async ($, on) => {
+  const { rings } = world(on, board(), HOME, { read: true })
+
+  await startSession($)
+  const ended = await endTurn($, 'The site is live.')
+
+  expect(rings).toEqual([])
+  expect(ended).toEqual({ text: 'The site is live.' })
+})
+
+test('a failed play stays silent and ends the turn', async ($, on) => {
+  const { rings } = world(on, board(), HOME, { play: true })
+
+  await startSession($)
+  const ended = await endTurn($, 'The site is live.')
+
+  expect(rings).toEqual([])
+  expect(ended).toEqual({ text: 'The site is live.' })
 })
 
 test('an automated turn with an outcome rings', async ($, on) => {

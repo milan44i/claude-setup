@@ -5,7 +5,7 @@ import type { Decisions } from '../types'
 
 // A marker-file check here would run a script from any repo that carries those files
 const HOME = '/Users/milanstankovic/work/firstmate'
-const BELL = { asset: 'sounds/bell.wav' }
+const BELL_FILE = `${HOME}/data/ships-bell-source/bell-trimmed.wav`
 const NO_OP_REPLY = 'Captain, shipshape.'
 const CAPTAIN_ORIGINS: readonly PromptOrigin['kind'][] = ['composer', 'bridge', 'slack-ping', 'channel']
 const CAPTAIN_DECISION = /^ {2}([^,]+),.*,captain$/gm
@@ -36,6 +36,12 @@ const takeNewDecision = async ($: EngineInterface) => {
 
   return seen !== null && current.some(id => !seen.includes(id))
 }
+
+const ringBell = ($: EngineInterface) =>
+  $.fs
+    .read(BELL_FILE, { as: 'bytes' })
+    .then(({ base64 }) => $.audio.play({ base64, mime: 'audio/wav' }))
+    .catch(() => undefined)
 
 const hasReply = (e: TurnCompleteInput, wasAsked: boolean) => {
   const answer = e.answer.trim()
@@ -77,7 +83,7 @@ export const register: Register = on => {
 
     const hasNewDecision = await takeNewDecision($)
 
-    if (hasNewDecision || hasReply(e, wasAsked)) await $.audio.play(BELL)
+    if (hasNewDecision || hasReply(e, wasAsked)) await ringBell($)
 
     return ended
   })
