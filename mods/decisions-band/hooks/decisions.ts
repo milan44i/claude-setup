@@ -5,6 +5,9 @@ const FIELD = /(?:^|,)("(?:[^"\\]|\\.)*"|[^,]*)/g
 // A long title arrives cut, with a note on its own line saying so
 const CUT_NOTE = /\n.*$/s
 const ELSEWHERE = ['Waiting for', 'Reminder']
+const CONTROLS_BUT_NEWLINE = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/g
+
+const printable = (text: string) => text.replace(CONTROLS_BUT_NEWLINE, '')
 
 const fields = (row: string) =>
   [...row.trim().matchAll(FIELD)].map(([, field = '']) =>
@@ -30,7 +33,7 @@ export const parseDecisions = (stdout: string): Decision[] => {
     })
     .flatMap(({ id = '', title = '', hold_kind, hold_reason = '' }) =>
       hold_kind === 'captain' && !ELSEWHERE.some(start => hold_reason.startsWith(start))
-        ? [{ id, title: title.replace(CUT_NOTE, ''), reason: hold_reason }]
+        ? [{ id, title: printable(title.replace(CUT_NOTE, '')), reason: printable(hold_reason) }]
         : [],
     )
 }

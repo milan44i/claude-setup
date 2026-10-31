@@ -172,6 +172,20 @@ test('one decision reads in the singular', async ($, on) => {
   await ui.unmount()
 })
 
+test('control characters never reach the band', async ($, on) => {
+  const clock = mock.clock(on)
+  const raw = 'tasks[1]{id,state,kind,repo,title,hold_kind,hold_reason}:\n  a,queued,task,"-","\\u001b[31mRed",captain,"One\\u0007\\nTwo\\u009b"\n'
+
+  world(on, { held: { exitCode: 0, stdout: raw } })
+  await start($, clock)
+  const ui = await mountBand($, 'terminal')
+
+  await ui.press({ key: 'toggle' })
+  expect(await ui.find({ type: 'Text', text: '[31mRed' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'One\nTwo' })).toBeDefined()
+  await ui.unmount()
+})
+
 test('a failed read keeps the last list and the timer running', async ($, on) => {
   const clock = mock.clock(on)
   const answers: { held: Answer } = { held: { exitCode: 0, stdout: HELD } }
