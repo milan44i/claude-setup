@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Decision, Explanation, Option, Queue } from '../types'
+import type { Choice, Decision, Explanation, Queue, Quick, QuickAnswer } from '../types'
 import {
   batchPrompt,
   blockedText,
@@ -20,10 +20,14 @@ import {
   parseDecisions,
   parseExplanation,
   parseQueue,
+  parseQuick,
   POSTPONE_HELP,
   printable,
   queueLine,
+  QUICK_SYSTEM,
+  quickHelp,
   reportNamedIn,
+  rowText,
   waitingLabel,
 } from './decisions'
 
@@ -34,6 +38,8 @@ const LOG = `${HOME}/data/decisions-log.jsonl`
 const REFRESH_MS = 60_000
 const EXPLAIN_MS = 120_000
 const EXPLAIN_TOKENS = 2048
+// A task id cannot hold a colon, so these keys never read as a hidden row
+const QUICK_KEY = 'quick:'
 const EXPLAINER = 'Lists the decisions waiting on you, click to open them.'
 const LOADING = 'Explaining...'
 const PANE = 'decisions'
@@ -55,6 +61,13 @@ const continued = atom({ plugin: 'decisions-band', key: 'continued' } as const, 
 const focused = atom({ plugin: 'decisions-band', key: 'focused' } as const, '')
 // Not in $.state, because a reload drops the running call and a kept id would block its row for good
 const asking = new Set<string>()
+// The answer drawn for each row, with the row text it was written for
+const quickAnswers = atom(
+  { plugin: 'decisions-band', key: 'quickAnswers' } as const,
+  {} as Readonly<Record<string, QuickAnswer>>,
+)
+// The row text last asked about, so a failed reply is not paid for again on every refresh
+const quickAsked = new Map<string, string>()
 
 const isHome = async ($: EngineInterface) => (await $.session.root()) === HOME
 
@@ -88,6 +101,8 @@ const refresh = async ($: EngineInterface) => {
 
   // A rewrite of the same list redraws the panel under a scroll in progress
   if (JSON.stringify(found) !== JSON.stringify(await read($, decisions))) await update($, decisions, () => found)
+
+  if ((await $.ui.panes()).some(({ id }) => id === PANE)) void prepareQuick($)
 }
 
 const drop = async ($: EngineInterface, id: string) => {
@@ -115,17 +130,26 @@ const postpone = async ($: EngineInterface, { id, reason }: Decision) => {
   else $.ui.toast(`Could not postpone ${id}: ${printable(stderr).trim()}`)
 }
 
-const explanationOf = async ($: EngineInterface, decision: Decision): Promise<Explanation> => {
+const decisionPrompt = async ($: EngineInterface, decision: Decision) => {
   const record = await $.process.run([`${HOME}/bin/fm-tasks-axi.sh`, 'show', decision.id, '--full'])
 
-  if (record.exitCode !== 0) return { text: `Could not read ${decision.id}: ${record.stderr}`, options: [] }
+  if (record.exitCode !== 0) return { failure: record.stderr }
 
   const named = reportNamedIn(record.stdout)
   const report = named === undefined ? undefined : await $.fs.read(`${HOME}/${named}`).catch(() => undefined)
+
+  return { prompt: explainPrompt(decision, record.stdout, report) }
+}
+
+const explanationOf = async ($: EngineInterface, decision: Decision): Promise<Explanation> => {
+  const { failure, prompt } = await decisionPrompt($, decision)
+
+  if (prompt === undefined) return { text: `Could not read ${decision.id}: ${failure}`, options: [] }
+
   const answer = await $.model.complete({
     model: 'sonnet',
     system: EXPLAIN_SYSTEM,
-    prompt: explainPrompt(decision, record.stdout, report),
+    prompt,
     timeoutMs: EXPLAIN_MS,
     maxTokens: EXPLAIN_TOKENS,
   })
@@ -136,6 +160,57 @@ const explanationOf = async ($: EngineInterface, decision: Decision): Promise<Ex
     text: `Could not explain: ${answer.reason}${answer.reason === 'api-error' ? ` ${answer.status} ${answer.error}` : ''}`,
     options: [],
   }
+}
+
+const quickOf = async ($: EngineInterface, decision: Decision, text: string): Promise<Quick | null | undefined> => {
+  const key = `${QUICK_KEY}${decision.id}`
+  const stored = (await $.store.get(key)) as { text?: unknown; reply?: unknown } | undefined
+
+  if (stored?.text === text && typeof stored.reply === 'string') {
+    const cached = parseQuick(stored.reply)
+
+    if (cached !== undefined) return cached
+  }
+
+  const { prompt } = await decisionPrompt($, decision)
+
+  if (prompt === undefined) return undefined
+
+  const answer = await $.model.complete({
+    model: 'sonnet',
+    system: QUICK_SYSTEM,
+    prompt,
+    timeoutMs: EXPLAIN_MS,
+    maxTokens: EXPLAIN_TOKENS,
+  })
+
+  if (!answer.isAnswered) return undefined
+
+  const quick = parseQuick(answer.text)
+
+  if (quick !== undefined) await $.store.set(key, { text, reply: answer.text })
+
+  return quick
+}
+
+// One row at a time, because a burst that hits a rate limit leaves rows without buttons until the next session
+const prepareQuick = async ($: EngineInterface) => {
+  for (const decision of await read($, decisions)) {
+    const text = rowText(decision)
+
+    if (quickAsked.get(decision.id) === text) continue
+
+    quickAsked.set(decision.id, text)
+
+    const quick = await quickOf($, decision, text).catch(() => undefined)
+
+    if (quick !== undefined) await update($, quickAnswers, shown => ({ ...shown, [decision.id]: { text, quick } }))
+  }
+}
+
+const openPanel = async ($: EngineInterface) => {
+  await $.ui.open({ id: PANE, title: TITLE })
+  void prepareQuick($)
 }
 
 const decide = async ($: EngineInterface, decision: Decision) => {
@@ -157,7 +232,7 @@ const decide = async ($: EngineInterface, decision: Decision) => {
 }
 
 // tee -a, because a read and a whole-file write would lose a line another session or firstmate adds meanwhile
-const choose = async ($: EngineInterface, decision: Decision, option: Option) => {
+const choose = async ($: EngineInterface, decision: Decision, option: Choice) => {
   const { exitCode, stderr } = await $.process.run(['tee', '-a', QUEUE], {
     stdin: queueLine(decision, option, await $.clock.now()),
   })
@@ -243,7 +318,7 @@ export const register: Register = on => {
             key="open"
             plain
             label={waitingLabel(waiting.length)}
-            onPress={() => $.ui.open({ id: PANE, title: TITLE })}
+            onPress={() => openPanel($)}
           />
           <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
             <Text dimColor>{EXPLAINER}</Text>
@@ -272,11 +347,13 @@ export const register: Register = on => {
     const shown = await read($, explained)
     const focusedKey = await read($, focused)
     const inChat = await read($, continued)
+    const answers = await read($, quickAnswers)
     const { Box, Button, Text } = $.ui.resolve(e)
 
     // Spans the button row and opens below it, so it stays clear of the title and description above
-    const help = (key: string, text: string) => (
+    const help = (key: string, text: string, lead?: string) => (
       <Box
+        flexDirection="column"
         position="absolute"
         top={2}
         left={0}
@@ -285,6 +362,7 @@ export const register: Register = on => {
         backgroundColor="userMessageBackground"
         borderStyle="round"
       >
+        {lead !== undefined && <Text bold>{lead}</Text>}
         <Text>{text}</Text>
       </Box>
     )
@@ -312,6 +390,16 @@ export const register: Register = on => {
           const reason = <Text dimColor>{decision.reason}</Text>
           const postponeKey = `postpone-${decision.id}`
           const hideKey = `hide-${decision.id}`
+          const answer = answers[decision.id]
+          // Row text compared here too, so a changed row loses its buttons before a new label is written
+          const quick = answer?.text === rowText(decision) ? answer.quick : null
+          const quickButtons: readonly (readonly [string, string, Choice])[] =
+            quick === null
+              ? []
+              : [
+                  ['Da', `yes-${decision.id}`, quick.yes],
+                  ['Ne', `no-${decision.id}`, quick.no],
+                ]
 
           return (
             <Box key={decision.id} flexDirection="column" borderStyle="round" borderDimColor>
@@ -325,6 +413,14 @@ export const register: Register = on => {
               )}
               <Box gap={1} paddingTop={1}>
                 <Button key={`decide-${decision.id}`} label="Decide" onPress={() => void decide($, decision)} />
+                {quickButtons.map(([label, key, choice]) => (
+                  <Button
+                    key={key}
+                    label={optionLabel(label, mark?.choice === choice.label)}
+                    hover={{ scope: key, bold: true }}
+                    onPress={() => choose($, decision, choice)}
+                  />
+                ))}
                 <Button
                   key={postponeKey}
                   label="↑"
@@ -337,6 +433,7 @@ export const register: Register = on => {
                   hover={{ scope: hideKey, bold: true }}
                   onPress={() => hide($, decision.id)}
                 />
+                {quickButtons.map(([, key, choice]) => help(key, quickHelp(choice), choice.label))}
                 {help(postponeKey, POSTPONE_HELP)}
                 {help(hideKey, HIDE_HELP)}
               </Box>
@@ -379,7 +476,7 @@ export const register: Register = on => {
                             <Button
                               key={`option-${decision.id}-${at}`}
                               {...(option.isRecommended ? { variant: 'primary' as const } : {})}
-                              label={optionLabel(option, isChosen)}
+                              label={optionLabel(option.label, isChosen)}
                               onPress={() => choose($, decision, option)}
                             />
                             <Text dimColor size="footnote">

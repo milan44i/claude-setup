@@ -147,6 +147,9 @@ const world = (
 
     return { value: { isPlaced: true } }
   })
+  on('ui.panes', () => ({
+    value: calls.opens.map(({ id, title = id }) => ({ id, title, isShown: true, isFocused: false, isPlaced: true })),
+  }))
   on('prompt.submit', async (_, e) => {
     calls.prompts.push(e.text)
 
@@ -1449,6 +1452,256 @@ test('a consequence with a line break fails the reply', async ($, on) => {
 
   expect(await ui.find({ type: 'Text', text: 'Could not explain: a consequence has hidden characters or a line break' })).toBeDefined()
   expect((await ui.findAll({ type: 'Button' })).some(button => button.key === 'option-pick-one-0')).toBe(false)
+  await ui.unmount()
+})
+
+const QUICK = {
+  yes: { label: 'Spoji PR 12 u main', consequence: 'Izmena odlazi u main.' },
+  no: { label: 'Ne spajaj PR 12', consequence: 'Grana ostaje nespojena.' },
+}
+const QUICK_REPLY = replied(QUICK)
+const ROW_TEXT = '["Pick one, or the other","Captain 2026-10-31: decide, and soon"]'
+const CHANGED = HELD.replace('decide, and soon', 'decide by Friday')
+
+const panelOpened = async (
+  $: Engine,
+  on: On,
+  answers: Parameters<typeof world>[1] = { held: { exitCode: 0, stdout: HELD }, model: QUICK_REPLY },
+  entries: Readonly<Record<string, unknown>> = {},
+) => {
+  const stored: Record<string, unknown> = {}
+  const clock = mock.clock(on, { now: LAST_OF_OCTOBER })
+  const calls = world(on, answers)
+
+  on('store.get', (_, e) => ({ value: stored[e.key] ?? entries[e.key] }))
+  on('store.keys', () => ({ value: [...Object.keys(entries), ...Object.keys(stored)] }))
+  on('store.set', (_, e) => {
+    stored[e.key] = e.value
+
+    return { value: undefined }
+  })
+  await start($, clock)
+
+  const band = await mountBand($, 'desktop')
+
+  await band.press({ key: 'open' })
+  await clock.settle()
+  await band.unmount()
+
+  return { clock, calls, stored }
+}
+
+test('opening the panel asks the explanation model once per row, with the same record Decide reads', async ($, on) => {
+  const { clock, calls } = await panelOpened($, on)
+
+  expect(calls.models.map(({ model }) => model)).toEqual(['sonnet', 'sonnet'])
+  expect(calls.models[0]?.system).toContain('reduces to yes or no')
+  expect(calls.models[0]?.prompt).toContain('Title: Pick one, or the other')
+  expect(calls.models[0]?.prompt).toContain(RECORD)
+
+  await clock.advance(MINUTE * 3)
+  await clock.settle()
+  expect(calls.models.length).toBe(2)
+})
+
+test('a closed panel spends nothing and shows no buttons, and an open one asks on the next refresh', async ($, on) => {
+  const clock = clockAt(on)
+  const calls = world(on, { held: { exitCode: 0, stdout: HELD }, model: QUICK_REPLY })
+
+  await start($, clock)
+  await clock.advance(MINUTE * 2)
+  await clock.settle()
+  expect(calls.models).toEqual([])
+
+  const ui = await mountPane($, 'desktop')
+
+  expect(await ui.find({ type: 'Button', key: 'yes-pick-one' })).toBeUndefined()
+  calls.opens.push({ id: 'decisions', title: 'Decisions' })
+  await clock.advance(MINUTE)
+  await clock.settle()
+  expect(calls.models.length).toBe(2)
+  expect(await ui.find({ type: 'Button', key: 'yes-pick-one' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('Da and Ne sit in the compact row and each card names the exact action before the press', async ($, on) => {
+  await panelOpened($, on)
+
+  for (const surface of SURFACES) {
+    const ui = await mountPane($, surface)
+    const [decide, yes, no, postpone, hide, yesCard, noCard, ...rest] = await buttonRowOf(ui)
+
+    expect(decide).toMatchObject({ type: 'Button', props: { label: 'Decide' } })
+    expect(yes).toMatchObject({ type: 'Button', props: { key: 'yes-pick-one', label: 'Da' }, hover: { scope: 'yes-pick-one', bold: true } })
+    expect(no).toMatchObject({ type: 'Button', props: { key: 'no-pick-one', label: 'Ne' }, hover: { scope: 'no-pick-one', bold: true } })
+    expect(postpone).toMatchObject({ type: 'Button', props: { key: 'postpone-pick-one' } })
+    expect(hide).toMatchObject({ type: 'Button', props: { key: 'hide-pick-one' } })
+    expect(yesCard).toMatchObject({ props: { ...POPOVER, display: 'none' }, hover: { scope: 'yes-pick-one', display: 'flex' } })
+    expect(noCard).toMatchObject({ props: { ...POPOVER, display: 'none' }, hover: { scope: 'no-pick-one', display: 'flex' } })
+    expect(rest.length).toBe(2)
+    expect(await ui.find({ type: 'Text', text: QUICK.yes.label })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: QUICK.no.label })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'Izmena odlazi u main. Ništa se ne pokreće do dugmeta Izvrši odluke.' })).toBeDefined()
+    await ui.unmount()
+  }
+})
+
+test('keyboard focus shows the card of Da and of Ne', async ($, on) => {
+  await panelOpened($, on)
+
+  const ui = await mountPane($, 'desktop')
+
+  await $.ui.focus({
+    component: 'Pane',
+    requestId: 'decisions',
+    origin: { kind: 'person' },
+    plugin: 'decisions-band',
+    element: 'no-pick-one',
+  })
+  expect((await buttonRowOf(ui)).slice(5)).toMatchObject([
+    { props: { display: 'none' } },
+    { props: { display: 'flex' } },
+    { props: { display: 'none' } },
+    { props: { display: 'none' } },
+  ])
+  await ui.unmount()
+})
+
+test('a press queues that exact label, marks the row and runs nothing until Execute', async ($, on) => {
+  const { calls } = await panelOpened($, on)
+  const ui = await mountPane($, 'desktop')
+
+  await ui.press({ key: 'yes-pick-one' })
+
+  expect(JSON.parse(calls.queue.text ?? '')).toMatchObject({ id: 'pick-one', choice: QUICK.yes.label, consequence: QUICK.yes.consequence })
+  expect((await ui.find({ type: 'Button', key: 'yes-pick-one' }))?.props.label).toBe('✓ Da')
+  expect((await ui.find({ type: 'Button', key: 'no-pick-one' }))?.props.label).toBe('Ne')
+  expect(await ui.find({ type: 'Text', text: `Izabrano: ${QUICK.yes.label}` })).toBeDefined()
+  expect((await ui.find({ type: 'Button', key: 'execute' }))?.props.label).toBe('Izvrši odluke (1)')
+  expect(calls.prompts).toEqual([])
+  expect(calls.holds).toEqual([])
+
+  await ui.press({ key: 'no-pick-one' })
+  expect((await ui.find({ type: 'Button', key: 'no-pick-one' }))?.props.label).toBe('✓ Ne')
+  expect((await ui.find({ type: 'Button', key: 'execute' }))?.props.label).toBe('Izvrši odluke (1)')
+  expect(calls.prompts).toEqual([])
+
+  await ui.press({ key: 'execute' })
+  expect(calls.prompts[0]).toContain(`"choice":"${QUICK.no.label}"`)
+  expect(calls.prompts[0]).not.toContain(`"choice":"${QUICK.yes.label}"`)
+  await ui.unmount()
+})
+
+test('a row the model says does not reduce shows neither button and is not asked again', async ($, on) => {
+  const { clock, calls, stored } = await panelOpened($, on, { held: { exitCode: 0, stdout: HELD }, model: replied({ quick: false }) })
+  const ui = await mountPane($, 'desktop')
+
+  expect(await ui.find({ type: 'Button', key: 'yes-pick-one' })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'no-pick-one' })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'decide-pick-one' })).toBeDefined()
+  expect(stored['quick:pick-one']).toMatchObject({ text: ROW_TEXT })
+
+  await clock.advance(MINUTE)
+  await clock.settle()
+  expect(calls.models.length).toBe(2)
+  await ui.unmount()
+})
+
+const LONG_LABEL = 'x '.repeat(31)
+const UNUSABLE: readonly (readonly [string, ModelAnswer])[] = [
+  ['bare Da and Ne', replied({ yes: { label: 'Da', consequence: 'C.' }, no: { label: 'Ne', consequence: 'C.' } })],
+  ['one word labels', replied({ yes: { label: 'Odobri', consequence: 'C.' }, no: QUICK.no })],
+  ['the same label twice', replied({ yes: QUICK.yes, no: QUICK.yes })],
+  ['a label over 60 characters', replied({ yes: { label: LONG_LABEL, consequence: 'C.' }, no: QUICK.no })],
+  ['a label with a line break', replied({ yes: { label: 'Spoji\nPR 12', consequence: 'C.' }, no: QUICK.no })],
+  ['a consequence with a line break', replied({ yes: { label: QUICK.yes.label, consequence: 'C.\nD.' }, no: QUICK.no })],
+  ['no no answer', replied({ yes: QUICK.yes })],
+  ['no consequence', replied({ yes: { label: QUICK.yes.label }, no: QUICK.no })],
+  ['a reply that is not JSON', replied(null, 'Da, naravno.')],
+  ['an answer the model did not give', { isAnswered: false, reason: 'api-error', status: 429, error: 'rate_limit', usage: USAGE }],
+  ['a refused model call', 'throw'],
+]
+
+for (const [name, model] of UNUSABLE) {
+  test(`${name} shows neither button, is not cached and is not paid for again this session`, async ($, on) => {
+    const { clock, calls, stored } = await panelOpened($, on, { held: { exitCode: 0, stdout: HELD }, model })
+    const ui = await mountPane($, 'desktop')
+
+    expect(await ui.find({ type: 'Button', key: 'yes-pick-one' })).toBeUndefined()
+    expect(await ui.find({ type: 'Button', key: 'no-pick-one' })).toBeUndefined()
+    expect(stored['quick:pick-one']).toBeUndefined()
+
+    await clock.advance(MINUTE)
+    await clock.settle()
+    expect(calls.models.length).toBe(2)
+    await ui.unmount()
+  })
+}
+
+test('an unreadable backlog record asks no model and shows neither button', async ($, on) => {
+  const { calls } = await panelOpened($, on, {
+    held: { exitCode: 0, stdout: HELD },
+    show: { exitCode: 1, stdout: '', stderr: 'no such task' },
+    model: QUICK_REPLY,
+  })
+  const ui = await mountPane($, 'desktop')
+
+  expect(calls.models).toEqual([])
+  expect(await ui.find({ type: 'Button', key: 'yes-pick-one' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a cached answer costs no call in a new session and hides no row', async ($, on) => {
+  const { calls, stored } = await panelOpened($, on, { held: { exitCode: 0, stdout: HELD }, model: QUICK_REPLY }, {
+    'quick:pick-one': { text: ROW_TEXT, reply: JSON.stringify(QUICK) },
+  })
+  const ui = await mountPane($, 'desktop')
+
+  expect(calls.models.filter(({ prompt }) => prompt.includes('Title: Pick one'))).toEqual([])
+  expect(stored['quick:pick-one']).toBeUndefined()
+  expect(calls.shows.some(argv => argv.includes('pick-one'))).toBe(false)
+  expect(await ui.find({ type: 'Button', key: 'yes-pick-one' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a cached answer for other text or a cached reply that fails the checks is asked again', async ($, on) => {
+  const { calls } = await panelOpened($, on, { held: { exitCode: 0, stdout: HELD }, model: QUICK_REPLY }, {
+    'quick:pick-one': { text: '["Old title","Old reason"]', reply: JSON.stringify(QUICK) },
+    'quick:long-title': { text: '["A title cut short","Second\\nline"]', reply: JSON.stringify({ yes: { label: 'Da', consequence: 'C.' }, no: QUICK.no }) },
+  })
+  const ui = await mountPane($, 'desktop')
+
+  expect(calls.models.length).toBe(2)
+  expect(await ui.find({ type: 'Button', key: 'yes-pick-one' })).toBeDefined()
+  expect(await ui.find({ type: 'Button', key: 'yes-long-title' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('when a row text changes its buttons leave before the new label is written, and only that row is asked', async ($, on) => {
+  let answer: (value: ModelAnswer) => void = () => undefined
+  const answers: Parameters<typeof world>[1] = { held: { exitCode: 0, stdout: HELD }, model: QUICK_REPLY }
+  const { clock, calls } = await panelOpened($, on, answers)
+  const ui = await mountPane($, 'desktop')
+  const CHANGED_QUICK = { yes: { label: 'Spoji PR 13 u main', consequence: 'Nova izmena odlazi u main.' }, no: QUICK.no }
+
+  answers.held = { exitCode: 0, stdout: CHANGED }
+  answers.model = new Promise(resolve => {
+    answer = resolve
+  })
+  await clock.advance(MINUTE)
+  await clock.settle()
+
+  expect(calls.models.length).toBe(3)
+  expect(await ui.find({ type: 'Button', key: 'yes-pick-one' })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'no-pick-one' })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'yes-long-title' })).toBeDefined()
+
+  answer(replied(CHANGED_QUICK))
+  await clock.settle()
+
+  expect(await ui.find({ type: 'Button', key: 'yes-pick-one' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'Spoji PR 13 u main' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: QUICK.yes.label })).toBeDefined()
   await ui.unmount()
 })
 
