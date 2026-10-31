@@ -1,9 +1,14 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Decision, Explanation, Mark, Option } from '../types'
+import type { Decision, Explanation, Option, Queue } from '../types'
 import {
   batchPrompt,
+  blockedText,
+  CONTINUE_HELP,
+  CONTINUE_LABEL,
+  CONTINUE_SENT_LABEL,
+  continuePrompt,
   executeLabel,
   EXPLAIN_SYSTEM,
   explainPrompt,
@@ -11,6 +16,7 @@ import {
   HIDE_HELP,
   localDate,
   optionLabel,
+  paragraphsOf,
   parseDecisions,
   parseExplanation,
   parseQueue,
@@ -31,6 +37,7 @@ const EXPLAIN_TOKENS = 2048
 const EXPLAINER = 'Lists the decisions waiting on you, click to open them.'
 const LOADING = 'Explaining...'
 const PANE = 'decisions'
+const EMPTY_QUEUE: Queue = { marks: {}, damaged: [] }
 const TITLE = 'Decisions'
 
 const decisions = atom({ plugin: 'decisions-band', key: 'decisions' } as const, [] as readonly Decision[])
@@ -39,9 +46,13 @@ const explained = atom(
   {} as Readonly<Record<string, Explanation>>,
 )
 // What the queue file says, reread after each press and on the timer, so a move by firstmate shows up
-const marks = atom({ plugin: 'decisions-band', key: 'marks' } as const, {} as Readonly<Record<string, Mark>>)
-// The marks a batch went out with, so a changed queue offers the button again
+const queue = atom({ plugin: 'decisions-band', key: 'queue' } as const, EMPTY_QUEUE)
+// The queue a batch went out with, so a changed queue offers the button again
 const sent = atom({ plugin: 'decisions-band', key: 'sent' } as const, '')
+// The explanation each id went to chat with, so a new one offers the button again
+const continued = atom({ plugin: 'decisions-band', key: 'continued' } as const, {} as Readonly<Record<string, string>>)
+// The desktop Pane reveals on :hover alone, so keyboard focus reaches a popover only through ui.focus
+const focused = atom({ plugin: 'decisions-band', key: 'focused' } as const, '')
 // Not in $.state, because a reload drops the running call and a kept id would block its row for good
 const asking = new Set<string>()
 
@@ -50,7 +61,9 @@ const isHome = async ($: EngineInterface) => (await $.session.root()) === HOME
 const rereadQueue = async ($: EngineInterface) => {
   const found = parseQueue((await $.fs.exists(QUEUE)) ? await $.fs.read(QUEUE) : '')
 
-  if (JSON.stringify(found) !== JSON.stringify(await read($, marks))) await update($, marks, () => found)
+  if (JSON.stringify(found) !== JSON.stringify(await read($, queue))) await update($, queue, () => found)
+
+  return found
 }
 
 const refresh = async ($: EngineInterface) => {
@@ -154,7 +167,19 @@ const choose = async ($: EngineInterface, decision: Decision, option: Option) =>
 }
 
 const execute = async ($: EngineInterface) => {
-  const batch = JSON.stringify(await read($, marks))
+  const seen = JSON.stringify(await read($, queue))
+  const found = await rereadQueue($)
+  const batch = JSON.stringify(found)
+
+  // A line the captain has not been shown yet needs its own look and a new press
+  if (batch !== seen) {
+    $.ui.toast('The queue changed, check it and press again.')
+
+    return
+  }
+
+  if (found.damaged.length > 0) return
+
   let isNew = false
 
   await update($, sent, last => {
@@ -166,9 +191,26 @@ const execute = async ($: EngineInterface) => {
   if (!isNew) return
 
   // Not awaited, because submit waits for the session to go idle and the press would wait with it
-  void $.prompt.submit({ text: batchPrompt(QUEUE, LOG) }).catch(async (error: unknown) => {
+  void $.prompt.submit({ text: batchPrompt(QUEUE, LOG, found.marks) }).catch(async (error: unknown) => {
     await update($, sent, () => '')
     $.ui.toast(`Could not send the batch: ${String(error)}`)
+  })
+}
+
+const continueInChat = async ($: EngineInterface, decision: Decision, explanation: string) => {
+  let isNew = false
+
+  await update($, continued, shown => {
+    isNew = shown[decision.id] !== explanation
+
+    return { ...shown, [decision.id]: explanation }
+  })
+
+  if (!isNew) return
+
+  void $.prompt.submit({ text: continuePrompt(decision, explanation) }).catch(async (error: unknown) => {
+    await update($, continued, ({ [decision.id]: _, ...rest }) => rest)
+    $.ui.toast(`Could not open the chat: ${String(error)}`)
   })
 }
 
@@ -213,70 +255,156 @@ export const register: Register = on => {
     )
   })
 
+  on('ui.focus', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
+    const moved = await next(e)
+
+    await update($, focused, () => e.element ?? '')
+
+    return moved
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const atHome = await isHome($)
     const waiting = atHome ? await read($, decisions) : []
-    const queued = atHome ? await read($, marks) : {}
+    const current = atHome ? await read($, queue) : EMPTY_QUEUE
+    const queued = current.marks
     const count = Object.keys(queued).length
-    const isSent = (await read($, sent)) === JSON.stringify(queued)
+    const isSent = (await read($, sent)) === JSON.stringify(current)
     const shown = await read($, explained)
+    const focusedKey = await read($, focused)
+    const inChat = await read($, continued)
     const { Box, Button, Text } = $.ui.resolve(e)
 
-    // A desktop lifts this absolute hidden Box into a card its keyed parent shows on hover and on keyboard focus
-    const withHelp = (key: string, help: string, button: ReturnType<typeof Button>) => (
-      <Box key={key}>
-        {button}
-        <Box position="absolute" bottom={1} left={0} display="none" hover={{ display: 'flex' }}>
-          <Text>{help}</Text>
-        </Box>
+    // Spans the button row and opens below it, so it stays clear of the title and description above
+    const help = (key: string, text: string) => (
+      <Box
+        position="absolute"
+        top={2}
+        left={0}
+        right={0}
+        {...(focusedKey === key ? { display: 'flex' } : { display: 'none', hover: { scope: key, display: 'flex' } })}
+        backgroundColor="userMessageBackground"
+        borderStyle="round"
+      >
+        <Text>{text}</Text>
       </Box>
     )
 
     return (
       <Box flexDirection="column" gap={1}>
-        {count > 0 && (
+        {current.damaged.length > 0 && <Text color="error">{blockedText(current.damaged)}</Text>}
+        {current.damaged.length === 0 && count > 0 && (
           <Button key="execute" variant="primary" label={executeLabel(count, isSent)} onPress={() => execute($)} />
         )}
+        {Object.entries(queued)
+          .filter(([id]) => !waiting.some(decision => decision.id === id))
+          .map(([id, { title, choice, consequence }]) => (
+            <Box key={`queued-${id}`} flexDirection="column" borderStyle="round" borderDimColor>
+              <Text bold>{title}</Text>
+              <Text dimColor>{`Nema otvorenog reda: ${id}`}</Text>
+              <Text>{`Izabrano: ${choice}`}</Text>
+              <Text dimColor>{consequence}</Text>
+            </Box>
+          ))}
         {waiting.length === 0 && <Text dimColor>No decisions waiting.</Text>}
         {waiting.map(decision => {
           const explanation = shown[decision.id]
           const mark = queued[decision.id]
           const reason = <Text dimColor>{decision.reason}</Text>
+          const postponeKey = `postpone-${decision.id}`
+          const hideKey = `hide-${decision.id}`
 
           return (
             <Box key={decision.id} flexDirection="column" borderStyle="round" borderDimColor>
               <Text bold>{decision.title}</Text>
-              {explanation !== undefined || fitsOneRow(decision.reason, e.props.bodyColumns) ? (
+              {fitsOneRow(decision.reason, e.props.bodyColumns) ? (
                 reason
               ) : (
                 <Box key={`reason-${decision.id}`} flexDirection="column" flexShrink={0} height={2} overflow="hidden">
                   {reason}
                 </Box>
               )}
-              <Box gap={1}>
+              <Box gap={1} paddingTop={1}>
                 <Button key={`decide-${decision.id}`} label="Decide" onPress={() => void decide($, decision)} />
-                {withHelp(
-                  `postpone-help-${decision.id}`,
-                  POSTPONE_HELP,
-                  <Button key={`postpone-${decision.id}`} label="↑" onPress={() => postpone($, decision)} />,
-                )}
-                {withHelp(
-                  `hide-help-${decision.id}`,
-                  HIDE_HELP,
-                  <Button key={`hide-${decision.id}`} label="×" onPress={() => hide($, decision.id)} />,
-                )}
+                <Button
+                  key={postponeKey}
+                  label="↑"
+                  hover={{ scope: postponeKey, bold: true }}
+                  onPress={() => postpone($, decision)}
+                />
+                <Button
+                  key={hideKey}
+                  label="×"
+                  hover={{ scope: hideKey, bold: true }}
+                  onPress={() => hide($, decision.id)}
+                />
+                {help(postponeKey, POSTPONE_HELP)}
+                {help(hideKey, HIDE_HELP)}
               </Box>
-              {explanation !== undefined && <Text>{explanation.text}</Text>}
-              {explanation?.options.map((option, at) => (
-                <Box key={`${decision.id}-${at}`} flexDirection="column">
-                  <Button
-                    key={`option-${decision.id}-${at}`}
-                    label={optionLabel(option, mark?.choice === option.label)}
-                    onPress={() => choose($, decision, option)}
-                  />
-                  <Text dimColor>{option.consequence}</Text>
+              {explanation !== undefined && (
+                <Box key={`open-${decision.id}`} flexDirection="column" gap={2} paddingTop={1}>
+                  <Box
+                    key={`explanation-${decision.id}`}
+                    flexDirection="column"
+                    gap={1}
+                    padding={1}
+                    backgroundColor="userMessageBackground"
+                  >
+                    {paragraphsOf(explanation.text).map(paragraph => (
+                      <Text>{paragraph}</Text>
+                    ))}
+                  </Box>
+                  {explanation.options.length > 0 && (
+                    <Box key={`options-${decision.id}`} flexDirection="column" gap={1}>
+                      {explanation.options.map((option, at) => {
+                        const isChosen = mark?.choice === option.label
+
+                        return (
+                          <Box
+                            key={`${decision.id}-${at}`}
+                            flexDirection="column"
+                            alignItems="flex-start"
+                            gap={1}
+                            borderStyle="round"
+                            {...(isChosen
+                              ? { borderColor: 'success' }
+                              : option.isRecommended
+                                ? { borderColor: 'suggestion' }
+                                : { borderDimColor: true })}
+                          >
+                            {option.isRecommended && (
+                              <Text size="caption" color="suggestion">
+                                Preporuka
+                              </Text>
+                            )}
+                            <Button
+                              key={`option-${decision.id}-${at}`}
+                              {...(option.isRecommended ? { variant: 'primary' as const } : {})}
+                              label={optionLabel(option, isChosen)}
+                              onPress={() => choose($, decision, option)}
+                            />
+                            <Text dimColor size="footnote">
+                              {option.consequence}
+                            </Text>
+                          </Box>
+                        )
+                      })}
+                    </Box>
+                  )}
+                  {explanation.text !== LOADING && (
+                    <Box key={`chat-${decision.id}`} flexDirection="column" alignItems="flex-start" gap={1}>
+                      <Button
+                        key={`continue-${decision.id}`}
+                        label={inChat[decision.id] === explanation.text ? CONTINUE_SENT_LABEL : CONTINUE_LABEL}
+                        onPress={() => continueInChat($, decision, explanation.text)}
+                      />
+                      <Text dimColor size="footnote">
+                        {CONTINUE_HELP}
+                      </Text>
+                    </Box>
+                  )}
                 </Box>
-              ))}
+              )}
               {mark !== undefined && !explanation?.options.some(({ label }) => label === mark.choice) && (
                 <Box key={`mark-${decision.id}`} flexDirection="column">
                   <Text>{`Izabrano: ${mark.choice}`}</Text>
