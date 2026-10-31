@@ -1,0 +1,5 @@
+{
+  "name": "captains-log",
+  "version": "0.1.0",
+  "description": "Adds /dnevnik, which writes today's shipped work as a nautical log entry in the firstmate home"
+}
