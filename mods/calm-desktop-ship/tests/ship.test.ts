@@ -2,6 +2,7 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
+import { shipSvg } from '../hooks/ship'
 import { estimateTokens, hasFailedChecks, isNightHour, parseRecordedPr, seaForFill } from '../hooks/weather'
 
 const HOME = '/Users/milanstankovic/work/firstmate'
@@ -481,6 +482,31 @@ test('night brings a dark sea, a lantern and the line, and day takes them away',
   await clock.set(new Date(2026, 10, 1, 6).getTime())
   expect((await drawnShip($)).source).not.toContain(LANTERN_FLAME)
   expect(await lineOf($, line)).toBeUndefined()
+})
+
+test('the ship mirrors through zero width as the drift reaches each edge, around its center', () => {
+  const source = shipSvg({ sea: 'calm', isNight: true, hasKraken: false })
+  const turn = source.match(
+    /<g transform="translate\(20 0\)">\n<g>\n<animateTransform attributeName="transform" type="scale" values="([^"]+)" keyTimes="([^"]+)" dur="200s" repeatCount="indefinite"[^>]*\/>\n<g transform="translate\(-20 0\)">\n<path d="M18 0V24/,
+  )
+
+  expect(turn?.[1]).toBe('1 1;1 1;-1 1;-1 1;1 1')
+  expect(turn?.[2]).toBe('0.0000;0.4850;0.5000;0.9850;1.0000')
+  expect(source).toContain('values="0%;100%;0%" dur="200s" calcMode="spline" keyTimes="0;.5;1"')
+  expect(source.indexOf('type="scale"')).toBeGreaterThan(source.lastIndexOf('type="rotate"', source.indexOf('M18 0V24')))
+  expect(source.indexOf('This lantern')).toBeGreaterThan(source.indexOf('type="scale"'))
+})
+
+test('the drift inset and the ride height leave room for the rock and the turned stern', () => {
+  const crestOf = (sea: 'calm' | 'rough' | 'heavy' | 'storm') => {
+    const source = shipSvg({ sea, isNight: false, hasKraken: false })
+
+    expect(source).toContain('type="translate" values="5 0;-45 0;5 0" dur="200s"')
+
+    return Number(source.match(/values="0 10\.5;0 10\.5;0 ([\d.]+);/)?.[1]).toFixed(1)
+  }
+
+  expect([crestOf('calm'), crestOf('rough'), crestOf('heavy'), crestOf('storm')]).toEqual(['2.0', '3.1', '4.5', '6.0'])
 })
 
 const expectPopover = async ($: Engine, key: string, hint: RegExp) => {

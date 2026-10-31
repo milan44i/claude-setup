@@ -4,6 +4,8 @@ import type { SeaState } from '../types'
 export const SHIP_WIDTH = 4096
 export const SHIP_HEIGHT = 46
 const DRIFT_SECONDS = 200
+const TURN_SECONDS = 3
+const DRIFT_INSET = 5
 
 const BOAT_WIDTH = 40
 const BOAT_Y = 10.5
@@ -26,6 +28,7 @@ const FRONT_SWELL = 8
 const RIDE_LIFT = 8.5
 const RIDE_SECONDS = 1.7
 const RIDE_DEGREES = 7
+const RIDE_ROCK_ALLOWANCE = 0.2
 
 const KRAKEN_SECONDS = 30
 
@@ -61,16 +64,16 @@ const SEAS = {
   storm: { amplitude: 4.5, backSeconds: 9, frontSeconds: 5, bob: 2.6, bobSeconds: 1.6, rock: 14, rockSeconds: 2.2 },
 } as const
 
-const swellClock = (seconds: number[]) => {
-  const keyTimes = seconds.map(second => (second / SWELL_SECONDS).toFixed(4)).join(';')
+const clock = (seconds: number[], period = SWELL_SECONDS) => {
+  const keyTimes = seconds.map(second => (second / period).toFixed(4)).join(';')
 
-  return `keyTimes="${keyTimes}" dur="${SWELL_SECONDS}s" repeatCount="indefinite"`
+  return `keyTimes="${keyTimes}" dur="${period}s" repeatCount="indefinite"`
 }
 
-const swellTiming = (seconds: number[]) => {
+const timing = (seconds: number[], period = SWELL_SECONDS) => {
   const keySplines = seconds.slice(1).map(() => SPLINE).join(';')
 
-  return `${swellClock(seconds)} calcMode="spline" keySplines="${keySplines}"`
+  return `${clock(seconds, period)} calcMode="spline" keySplines="${keySplines}"`
 }
 
 const wavePath = (level: number, amplitude: number, wavelength: number) => {
@@ -114,21 +117,38 @@ const swell = (level: number, height: number, amplitude: number, water: string) 
   const [left, right] = [center - SWELL_REACH, center + SWELL_REACH]
 
   return `<g>
-<animateTransform attributeName="transform" type="translate" values="${left} 0;${left} 0;${right} 0;${right} 0" ${swellClock([0, SWELL_START, SWELL_END, SWELL_SECONDS])}/>
+<animateTransform attributeName="transform" type="translate" values="${left} 0;${left} 0;${right} 0;${right} 0" ${clock([0, SWELL_START, SWELL_END, SWELL_SECONDS])}/>
 <path d="${flat}" fill="${water}">
-<animate attributeName="d" values="${flat};${flat};${full};${full};${flat};${flat}" ${swellTiming([0, SWELL_START, SWELL_BUILT, SWELL_FADING, SWELL_END, SWELL_SECONDS])}/>
+<animate attributeName="d" values="${flat};${flat};${full};${full};${flat};${flat}" ${timing([0, SWELL_START, SWELL_BUILT, SWELL_FADING, SWELL_END, SWELL_SECONDS])}/>
 </path>
 </g>`
 }
 
-// A percentage of the frame less the boat's own width, in two animations on one clock
+// A percentage of the frame less the boat's own width, in two animations on one clock. The inset
+// keeps the flag and the lantern glow inside the frame at full rock, with the stern to either edge
 const drifting = (content: string) => `<svg overflow="visible">
 <animate attributeName="x" values="0%;100%;0%" dur="${DRIFT_SECONDS}s" ${EASE}/>
 <g>
-<animateTransform attributeName="transform" type="translate" values="0 0;${-BOAT_WIDTH} 0;0 0" dur="${DRIFT_SECONDS}s" ${EASE}/>
+<animateTransform attributeName="transform" type="translate" values="${DRIFT_INSET} 0;${-BOAT_WIDTH - DRIFT_INSET} 0;${DRIFT_INSET} 0" dur="${DRIFT_SECONDS}s" ${EASE}/>
 ${content}
 </g>
 </svg>`
+
+// Each turn ends as the drift reverses, so a fresh drawing opens at full width with its bow ahead.
+// It sits inside the rock and ride, which answer to the swell and not to the way the bow points
+const turning = (content: string) => {
+  const center = BOAT_WIDTH / 2
+  const edge = DRIFT_SECONDS / 2
+
+  return `<g transform="translate(${center} 0)">
+<g>
+<animateTransform attributeName="transform" type="scale" values="1 1;1 1;-1 1;-1 1;1 1" ${timing([0, edge - TURN_SECONDS, edge, DRIFT_SECONDS - TURN_SECONDS, DRIFT_SECONDS], DRIFT_SECONDS)}/>
+<g transform="translate(${-center} 0)">
+${content}
+</g>
+</g>
+</g>`
+}
 
 const RIDE_START = SWELL_CREST - RIDE_SECONDS
 const RIDE_END = SWELL_CREST + RIDE_SECONDS
@@ -161,19 +181,18 @@ const LANTERN = `<title>This lantern is the night watch, lit from 20:00 to 06:00
 
 const boat = ({ sea, isNight }: Scene) => {
   const { bob, bobSeconds, rock, rockSeconds } = SEAS[sea]
-  // A taller bob takes the same height off the ride, so the flag stays inside the frame
-  const crest = BOAT_Y - RIDE_LIFT + (bob - SEAS.calm.bob)
+  // A taller bob or a wider rock takes height off the ride, so the flag stays inside the frame
+  const crest = BOAT_Y - RIDE_LIFT + (bob - SEAS.calm.bob) + (rock - SEAS.calm.rock) * RIDE_ROCK_ALLOWANCE
 
   return `<g>
-<animateTransform attributeName="transform" type="translate" values="0 ${BOAT_Y};0 ${BOAT_Y};0 ${crest};0 ${BOAT_Y};0 ${BOAT_Y}" ${swellTiming([0, RIDE_START, SWELL_CREST, RIDE_END, SWELL_SECONDS])}/>
+<animateTransform attributeName="transform" type="translate" values="0 ${BOAT_Y};0 ${BOAT_Y};0 ${crest};0 ${BOAT_Y};0 ${BOAT_Y}" ${timing([0, RIDE_START, SWELL_CREST, RIDE_END, SWELL_SECONDS])}/>
 <g>
 <animateTransform attributeName="transform" type="translate" values="0 ${-bob};0 ${bob};0 ${-bob}" dur="${bobSeconds}s" ${EASE}/>
 <g>
 <animateTransform attributeName="transform" type="rotate" values="${-rock} ${ROCK_X} ${ROCK_Y};${rock} ${ROCK_X} ${ROCK_Y};${-rock} ${ROCK_X} ${ROCK_Y}" dur="${rockSeconds}s" ${EASE}/>
 <g>
-<animateTransform attributeName="transform" type="rotate" values="0 ${ROCK_X} ${ROCK_Y};0 ${ROCK_X} ${ROCK_Y};${RIDE_DEGREES} ${ROCK_X} ${ROCK_Y};0 ${ROCK_X} ${ROCK_Y};${-RIDE_DEGREES} ${ROCK_X} ${ROCK_Y};0 ${ROCK_X} ${ROCK_Y};0 ${ROCK_X} ${ROCK_Y}" ${swellTiming([0, RIDE_START, SWELL_CREST - RIDE_SECONDS / 2, SWELL_CREST, SWELL_CREST + RIDE_SECONDS / 2, RIDE_END, SWELL_SECONDS])}/>
-${PIRATE_SHIP}
-${isNight ? `<g>${LANTERN}</g>` : ''}
+<animateTransform attributeName="transform" type="rotate" values="0 ${ROCK_X} ${ROCK_Y};0 ${ROCK_X} ${ROCK_Y};${RIDE_DEGREES} ${ROCK_X} ${ROCK_Y};0 ${ROCK_X} ${ROCK_Y};${-RIDE_DEGREES} ${ROCK_X} ${ROCK_Y};0 ${ROCK_X} ${ROCK_Y};0 ${ROCK_X} ${ROCK_Y}" ${timing([0, RIDE_START, SWELL_CREST - RIDE_SECONDS / 2, SWELL_CREST, SWELL_CREST + RIDE_SECONDS / 2, RIDE_END, SWELL_SECONDS])}/>
+${turning(`${PIRATE_SHIP}\n${isNight ? `<g>${LANTERN}</g>` : ''}`)}
 </g>
 </g>
 </g>
