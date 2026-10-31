@@ -1,6 +1,6 @@
 import type { EngineInterface, Register } from 'claude-code'
 
-import { SHIP_ALT, SHIP_SVG } from './ship'
+import { SHIP_ALT, SHIP_HEIGHT, SHIP_SVG, SHIP_WIDTH } from './ship'
 
 // fs.exists comes first because a rejected stat is an error in the debug log, once per drawing
 const isHome = async ($: EngineInterface, root: string) => {
@@ -30,6 +30,6 @@ export const register: Register = on => {
 
     const { Svg } = $.ui.resolve(e)
 
-    return <Svg source={SHIP_SVG} alt={SHIP_ALT} isInteractive />
+    return <Svg source={SHIP_SVG} alt={SHIP_ALT} width={SHIP_WIDTH} height={SHIP_HEIGHT} isInteractive />
   })
 }

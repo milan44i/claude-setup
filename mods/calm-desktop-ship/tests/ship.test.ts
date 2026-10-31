@@ -78,6 +78,9 @@ test('desktop with Calm on draws an interactive Svg, read only', async ($, on) =
   const source = String(svg?.props.source)
 
   expect(svg?.props.isInteractive).toBe(true)
+  expect(svg?.props.width).toBe(4096)
+  expect(svg?.props.height).toBe(32)
+  expect(source).not.toMatch(/viewBox/)
   expect(String(svg?.props.alt)).toMatch(/sailboat/)
   expect(source.length).toBeLessThan(131072)
   expect(source).toMatch(/<animateTransform [^>]*repeatCount="indefinite"/)
