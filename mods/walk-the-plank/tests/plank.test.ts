@@ -10,7 +10,7 @@ const EN = '–'
 
 const TURN_END = { turnId: 't', answer: '', durationMs: 0, isAborted: false, reason: 'answer' as const, stopReason: 'end_turn' }
 
-const world = (on: On, files: Record<string, string> = {}, readable: (path: string) => 'allow' | 'ask' | 'deny' = () => 'allow') => {
+const world = (on: On, files: Record<string, string> = {}, readable: (path: string) => 'allow' | 'ask' | 'deny' = () => 'allow', links: Record<string, string> = {}) => {
   const calls = { ran: [] as string[], toasts: [] as string[], reads: [] as string[], writes: 0 }
 
   mock.env(on, { HOME: '/fake/home' })
@@ -20,10 +20,11 @@ const world = (on: On, files: Record<string, string> = {}, readable: (path: stri
     const body = files[e.path]
 
     if (e.path.startsWith('/dev/')) return { value: { kind: 'other' as const, size: 0, mtimeMs: 0, isLink: false } }
-    if (e.path.endsWith('.link')) return { value: { kind: 'file' as const, size: 9, mtimeMs: 0, isLink: true } }
     if (body === undefined) return { deny: 'ENOENT' }
 
-    return { value: { kind: 'file' as const, size: body.length, mtimeMs: 0, isLink: false } }
+    const realPath = links[e.path] ?? e.path
+
+    return { value: { kind: 'file' as const, size: body.length, mtimeMs: 0, isLink: realPath !== e.path, realPath } }
   })
   on('fs.read', (_, e) => {
     calls.reads.push(e.path)
@@ -258,11 +259,21 @@ test('a file the session may not Read stays unread and unquoted', async ($, on) 
   expect(calls.toasts).toEqual([])
 })
 
-test('a symbolic link is not followed', async ($, on) => {
-  const calls = world(on, { '/repo/body.link': `Token ${EM} hunter2.` })
+test('a link is judged and read at where it lands', async ($, on) => {
+  const files = {
+    '/repo/secret.link': `Token ${EM} hunter2.`,
+    '/repo/body.link': `This is ${EM} bad.`,
+    '/secret/token': `Token ${EM} hunter2.`,
+    '/drafts/body.md': `This is ${EM} bad.`,
+  }
+  const links = { '/repo/secret.link': '/secret/token', '/repo/body.link': '/drafts/body.md' }
+  const calls = world(on, files, path => (path.startsWith('/secret/') ? 'deny' : 'allow'), links)
 
-  expect(await bash($, 'git commit -F /repo/body.link')).toBeUndefined()
+  expect(await bash($, 'git commit -F /repo/secret.link')).toBeUndefined()
   expect(calls.reads).toEqual([])
+
+  await expectStopped($, 'git commit -F /repo/body.link', 'Commit message:')
+  expect(calls.reads).toEqual(['/drafts/body.md'])
 })
 
 test('a device or an oversized file is not read', async ($, on) => {

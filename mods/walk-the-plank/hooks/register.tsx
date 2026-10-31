@@ -12,17 +12,17 @@ const walking = atom({ plugin: 'walk-the-plank', key: 'walking' } as const, null
 const MAX_DRAFT_BYTES = 1_048_576
 
 // tool.call runs ahead of the permission prompt, and the denial quotes what it reads, so a file
-// the session may not Read stays unread. A device or a FIFO would hang the read
+// the session may not Read stays unread. The check and the read share the resolved path so a link
+// cannot aim one elsewhere, and a device or a FIFO would hang the read
 const readDraftFile = async ($: EngineInterface, path: string) => {
-  const { decision } = await $.tool.check({ tool: 'Read', input: { file_path: path } })
+  const stat = await $.fs.stat(path, { resolve: true }).catch(() => undefined)
+  const real = stat?.realPath
 
-  if (decision !== 'allow') return ''
+  if (real === undefined || stat?.kind !== 'file' || stat.size > MAX_DRAFT_BYTES) return ''
 
-  const stat = await $.fs.stat(path).catch(() => undefined)
+  const { decision } = await $.tool.check({ tool: 'Read', input: { file_path: real } })
 
-  if (stat?.kind !== 'file' || stat.isLink || stat.size > MAX_DRAFT_BYTES) return ''
-
-  return $.fs.read(path).catch(() => '')
+  return decision === 'allow' ? $.fs.read(real).catch(() => '') : ''
 }
 
 const flaggedDrafts = async ($: EngineInterface, command: string) => {
