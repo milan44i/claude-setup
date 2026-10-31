@@ -10,11 +10,20 @@ const EN = '–'
 
 const TURN_END = { turnId: 't', answer: '', durationMs: 0, isAborted: false, reason: 'answer' as const, stopReason: 'end_turn' }
 
-const world = (on: On, files: Record<string, string> = {}) => {
+const world = (on: On, files: Record<string, string> = {}, readable: (path: string) => 'allow' | 'ask' | 'deny' = () => 'allow') => {
   const calls = { ran: [] as string[], toasts: [] as string[], reads: [] as string[], writes: 0 }
 
   mock.env(on, { HOME: '/fake/home' })
   on('session.cwd', () => ({ value: CWD }))
+  on('tool.check', (_, e) => ({ decision: readable((e.input as { file_path: string }).file_path) }))
+  on('fs.stat', (_, e) => {
+    const body = files[e.path]
+
+    if (e.path.startsWith('/dev/')) return { value: { kind: 'other' as const, size: 0, mtimeMs: 0, isLink: false } }
+    if (body === undefined) return { deny: 'ENOENT' }
+
+    return { value: { kind: 'file' as const, size: body.length, mtimeMs: 0, isLink: false } }
+  })
   on('fs.read', (_, e) => {
     calls.reads.push(e.path)
 
@@ -232,8 +241,29 @@ test('--body-file and -F read the file, relative to the right directory', async 
 
   expect(await bash($, 'gh pr create --title Plain --body-file ok.md')).toBeUndefined()
   expect(await bash($, 'git commit -F missing.txt')).toBeUndefined()
-  expect(calls.reads).toContain(`${CWD}/missing.txt`)
+  expect(calls.reads).not.toContain(`${CWD}/missing.txt`)
   expect(calls.writes).toBe(0)
+})
+
+test('a file the session may not Read stays unread and unquoted', async ($, on) => {
+  const secret = `Token ${EM} hunter2.`
+  const files = { '/secret/denied.env': secret, '/secret/asked.env': secret }
+  const calls = world(on, files, path => (path.includes('denied') ? 'deny' : 'ask'))
+
+  expect(await bash($, 'git commit -F /secret/denied.env')).toBeUndefined()
+  expect(await bash($, 'gh pr create --title Plain --body-file /secret/asked.env')).toBeUndefined()
+  expect(await bash($, 'gh pr create --title Plain --body "$(cat /secret/denied.env)"')).toBeUndefined()
+  expect(calls.reads).toEqual([])
+  expect(calls.toasts).toEqual([])
+})
+
+test('a device or an oversized file is not read', async ($, on) => {
+  const files = { '/big.md': `${'x'.repeat(1_048_577)}${EM}` }
+  const calls = world(on, files)
+
+  expect(await bash($, 'git commit -F /dev/zero')).toBeUndefined()
+  expect(await bash($, 'git commit -F /big.md')).toBeUndefined()
+  expect(calls.reads).toEqual([])
 })
 
 test('a command with nothing to inspect reads no file', async ($, on) => {

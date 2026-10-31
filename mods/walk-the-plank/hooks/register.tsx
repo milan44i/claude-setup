@@ -9,8 +9,21 @@ import { denial, findSlop } from './slop'
 
 const walking = atom({ plugin: 'walk-the-plank', key: 'walking' } as const, null as Walking)
 
-// An unreadable file leaves nothing to judge, and the command itself reports it
-const readDraftFile = ($: EngineInterface, path: string) => $.fs.read(path).catch(() => '')
+const MAX_DRAFT_BYTES = 1_048_576
+
+// tool.call runs ahead of the permission prompt, and the denial quotes what it reads, so a file
+// the session may not Read stays unread. A device or a FIFO would hang the read
+const readDraftFile = async ($: EngineInterface, path: string) => {
+  const { decision } = await $.tool.check({ tool: 'Read', input: { file_path: path } })
+
+  if (decision !== 'allow') return ''
+
+  const stat = await $.fs.stat(path).catch(() => undefined)
+
+  if (stat?.kind !== 'file' || stat.size > MAX_DRAFT_BYTES) return ''
+
+  return $.fs.read(path).catch(() => '')
+}
 
 const flaggedDrafts = async ($: EngineInterface, command: string) => {
   const commands = parseShell(command)
