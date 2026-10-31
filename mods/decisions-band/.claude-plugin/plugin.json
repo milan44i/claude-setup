@@ -1,0 +1,6 @@
+{
+  "name": "decisions-band",
+  "version": "0.1.0",
+  "description": "Lists the captain's open decisions above the prompt in a firstmate home",
+  "types": "./types/index.d.ts"
+}
