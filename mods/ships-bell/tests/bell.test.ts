@@ -2,7 +2,7 @@ import type { On, TurnCompleteInput } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-const HOME = '/fake/home'
+const HOME = '/Users/milanstankovic/work/firstmate'
 const NO_OP = 'Captain, shipshape.'
 const HEADER = 'count: 2\ntasks[2]{id,state,kind,repo,title,hold_kind}:'
 const FOOTER = 'help[1]:\n  - Run `tasks-axi show <id>` for full notes on a task\n'
@@ -19,12 +19,6 @@ const world = (on: On, tasks: Board, root = HOME) => {
   const commands: (readonly string[])[] = []
 
   on('session.root', () => ({ value: root }))
-  on('fs.exists', (_, e) => ({ value: e.path === `${HOME}/bin/fm-crew-state.sh` }))
-  on('fs.stat', (_, e) => {
-    if (e.path !== `${HOME}/state`) return { deny: 'ENOENT' }
-
-    return { value: { kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false } }
-  })
   on('process.run', (_, e) => {
     commands.push(e.argv)
 
@@ -203,6 +197,25 @@ test('a decision a subagent turn passed over rings at the next main turn', async
 
 test('outside a firstmate home nothing rings and nothing runs', async ($, on) => {
   const { rings, commands } = world(on, board(), '/somewhere/else')
+
+  await startSession($)
+  await captainTurn($, 'A real answer.')
+
+  expect(rings).toEqual([])
+  expect(commands).toEqual([])
+})
+
+test('a repo with every marker file at another path rings nothing and runs nothing', async ($, on) => {
+  const repo = `${HOME}-copy`
+  const markers = [`${repo}/bin/fm-crew-state.sh`, `${repo}/bin/fm-tasks-axi.sh`]
+  const { rings, commands } = world(on, board(), repo)
+
+  on('fs.exists', (_, e) => ({ value: markers.includes(e.path) }))
+  on('fs.stat', (_, e) => {
+    if (e.path !== `${repo}/state`) return { deny: 'ENOENT' }
+
+    return { value: { kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false } }
+  })
 
   await startSession($)
   await captainTurn($, 'A real answer.')

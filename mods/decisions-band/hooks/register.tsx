@@ -4,22 +4,20 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Decision } from '../types'
 import { decidePrompt, parseDecisions, waitingLabel } from './decisions'
 
+// A marker-file check here would run a script from any repo that carries those files
+const HOME = '/Users/milanstankovic/work/firstmate'
 const REFRESH_MS = 60_000
 
 const decisions = atom({ plugin: 'decisions-band', key: 'decisions' } as const, [] as readonly Decision[])
 const isOpen = atom({ plugin: 'decisions-band', key: 'isOpen' } as const, false)
 
-const isHome = async ($: EngineInterface, root: string) => {
-  if (!(await $.fs.exists(`${root}/bin/fm-crew-state.sh`))) return false
+const isHome = async ($: EngineInterface) => (await $.session.root()) === HOME
 
-  const state = await $.fs.stat(`${root}/state`).catch(() => undefined)
+const refresh = async ($: EngineInterface) => {
+  if (!(await isHome($))) return
 
-  return state?.kind === 'dir'
-}
-
-const refresh = async ($: EngineInterface, script: string) => {
   const { exitCode, stdout } = await $.process.run([
-    script,
+    `${HOME}/bin/fm-tasks-axi.sh`,
     'list',
     '--state',
     'held',
@@ -35,12 +33,10 @@ const refresh = async ($: EngineInterface, script: string) => {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
-    const root = await $.session.root()
 
-    if (await isHome($, root)) {
-      const script = `${root}/bin/fm-tasks-axi.sh`
+    if (await isHome($)) {
       // A failed read keeps the last list, and a rejection here would end the interval
-      const tick = () => refresh($, script).catch(() => undefined)
+      const tick = () => refresh($).catch(() => undefined)
 
       void tick()
       $.clock.every(REFRESH_MS, tick)
@@ -52,7 +48,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const waiting = await read($, decisions)
 
-    if (e.props.hasSurvey || waiting.length === 0) return next(e)
+    if (e.props.hasSurvey || waiting.length === 0 || !(await isHome($))) return next(e)
 
     const beneath = await next(e)
     const { Box, Button, Text } = $.ui.resolve(e)

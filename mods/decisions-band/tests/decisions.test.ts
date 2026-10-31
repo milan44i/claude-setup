@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine, MockClock } from 'claude-code/testing'
 
-const HOME = '/fake/home'
+const HOME = '/Users/milanstankovic/work/firstmate'
 const SCRIPT = `${HOME}/bin/fm-tasks-axi.sh`
 const STOCK = 'stock band'
 const MINUTE = 60_000
@@ -22,17 +22,11 @@ help[1]:
 
 type Answer = { exitCode: number; stdout: string } | 'throw'
 
-const world = (on: On, answers: { held: Answer }, root = HOME) => {
+const world = (on: On, answers: { held: Answer }, session = { root: HOME }) => {
   const calls = { argv: [] as (readonly string[])[], writes: 0, prompts: [] as string[] }
 
-  on('session.root', () => ({ value: root }))
+  on('session.root', () => ({ value: session.root }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('fs.exists', (_, e) => ({ value: root === HOME && e.path === `${HOME}/bin/fm-crew-state.sh` }))
-  on('fs.stat', (_, e) => {
-    if (root !== HOME || e.path !== `${HOME}/state`) return { deny: 'ENOENT' }
-
-    return { value: { kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false } }
-  })
   on('fs.write', () => {
     calls.writes += 1
 
@@ -219,13 +213,56 @@ test('a survey keeps the band', async ($, on) => {
 
 test('outside a firstmate home nothing runs and the band passes through', async ($, on) => {
   const clock = mock.clock(on)
-  const calls = world(on, { held: { exitCode: 0, stdout: HELD } }, '/some/other/project')
+  const calls = world(on, { held: { exitCode: 0, stdout: HELD } }, { root: '/some/other/project' })
 
   await start($, clock)
   expect(calls.argv).toEqual([])
 
   const ui = await mountBand($, 'desktop')
 
+  expect(await ui.find({ type: 'Text', text: STOCK })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a repo with every marker file at another path runs nothing and passes through', async ($, on) => {
+  const clock = mock.clock(on)
+  const repo = `${HOME}-copy`
+  const markers = [`${repo}/bin/fm-crew-state.sh`, `${repo}/bin/fm-tasks-axi.sh`]
+  const calls = world(on, { held: { exitCode: 0, stdout: HELD } }, { root: repo })
+
+  on('fs.exists', (_, e) => ({ value: markers.includes(e.path) }))
+  on('fs.stat', (_, e) => {
+    if (e.path !== `${repo}/state`) return { deny: 'ENOENT' }
+
+    return { value: { kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false } }
+  })
+
+  await start($, clock)
+  await clock.advance(MINUTE)
+  expect(calls.argv).toEqual([])
+
+  const ui = await mountBand($, 'desktop')
+
+  expect(await ui.find({ type: 'Button', key: 'toggle' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: STOCK })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a session moved out of the home stops reading and passes through', async ($, on) => {
+  const clock = mock.clock(on)
+  const session = { root: HOME }
+  const calls = world(on, { held: { exitCode: 0, stdout: HELD } }, session)
+
+  await start($, clock)
+  expect(calls.argv.length).toBe(1)
+
+  session.root = '/some/other/project'
+  await clock.advance(MINUTE)
+  expect(calls.argv.length).toBe(1)
+
+  const ui = await mountBand($, 'desktop')
+
+  expect(await ui.find({ type: 'Button', key: 'toggle' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: STOCK })).toBeDefined()
   await ui.unmount()
 })

@@ -3,6 +3,8 @@ import type { EngineInterface, PromptOrigin, Register, TurnCompleteInput } from 
 
 import type { Decisions } from '../types'
 
+// A marker-file check here would run a script from any repo that carries those files
+const HOME = '/Users/milanstankovic/work/firstmate'
 const BELL = { asset: 'sounds/bell.wav' }
 const NO_OP_REPLY = 'Captain, shipshape.'
 const CAPTAIN_ORIGINS: readonly PromptOrigin['kind'][] = ['composer', 'bridge', 'slack-ping', 'channel']
@@ -11,18 +13,11 @@ const CAPTAIN_DECISION = /^ {2}([^,]+),.*,captain$/gm
 const decisions = atom({ plugin: 'ships-bell', key: 'decisions' } as const, null as Decisions)
 const captainAsked = atom({ plugin: 'ships-bell', key: 'captainAsked' } as const, false as boolean)
 
-// fs.exists comes first because a rejected stat is an error in the debug log
-const isHome = async ($: EngineInterface, root: string) => {
-  if (!(await $.fs.exists(`${root}/bin/fm-crew-state.sh`))) return false
+const isHome = async ($: EngineInterface) => (await $.session.root()) === HOME
 
-  const state = await $.fs.stat(`${root}/state`).catch(() => undefined)
-
-  return state?.kind === 'dir'
-}
-
-const readDecisions = async ($: EngineInterface, root: string) => {
+const readDecisions = async ($: EngineInterface) => {
   const listed = await $.process
-    .run([`${root}/bin/fm-tasks-axi.sh`, 'list', '--state', 'held', '--fields', 'hold_kind'])
+    .run([`${HOME}/bin/fm-tasks-axi.sh`, 'list', '--state', 'held', '--fields', 'hold_kind'])
     .catch(() => undefined)
 
   if (listed?.exitCode !== 0) return undefined
@@ -30,8 +25,8 @@ const readDecisions = async ($: EngineInterface, root: string) => {
   return [...listed.stdout.matchAll(CAPTAIN_DECISION)].map(row => row[1])
 }
 
-const takeNewDecision = async ($: EngineInterface, root: string) => {
-  const current = await readDecisions($, root)
+const takeNewDecision = async ($: EngineInterface) => {
+  const current = await readDecisions($)
 
   if (current === undefined) return false
 
@@ -54,10 +49,9 @@ const hasReply = (e: TurnCompleteInput, wasAsked: boolean) => {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
-    const root = await $.session.root()
 
-    if ((await read($, decisions)) === null && (await isHome($, root))) {
-      await takeNewDecision($, root)
+    if ((await read($, decisions)) === null && (await isHome($))) {
+      await takeNewDecision($)
     }
 
     return started
@@ -79,11 +73,9 @@ export const register: Register = on => {
 
     await update($, captainAsked, () => false)
 
-    const root = await $.session.root()
+    if (!(await isHome($))) return ended
 
-    if (!(await isHome($, root))) return ended
-
-    const hasNewDecision = await takeNewDecision($, root)
+    const hasNewDecision = await takeNewDecision($)
 
     if (hasNewDecision || hasReply(e, wasAsked)) await $.audio.play(BELL)
 
