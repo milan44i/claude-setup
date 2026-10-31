@@ -7,6 +7,7 @@ import { decidePrompt, parseDecisions, waitingLabel } from './decisions'
 // A marker-file check here would run a script from any repo that carries those files
 const HOME = '/Users/milanstankovic/work/firstmate'
 const REFRESH_MS = 60_000
+const EXPLAINER = 'Lists the decisions waiting on you, click to open them.'
 
 const decisions = atom({ plugin: 'decisions-band', key: 'decisions' } as const, [] as readonly Decision[])
 const isOpen = atom({ plugin: 'decisions-band', key: 'isOpen' } as const, false)
@@ -56,25 +57,30 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
-        <Button
-          key="toggle"
-          plain
-          label={waitingLabel(waiting.length)}
-          onPress={() => update($, isOpen, open => !open)}
-        />
-        {rows.map(({ id, title, reason }) => (
-          <Box key={id} gap={1}>
-            <Box flexDirection="column" flexGrow={1} flexShrink={1}>
-              <Text bold>{title}</Text>
-              <Text dimColor>{reason}</Text>
+        <Box key="band" flexDirection="column">
+          <Button
+            key="toggle"
+            plain
+            label={waitingLabel(waiting.length)}
+            onPress={() => update($, isOpen, open => !open)}
+          />
+          {rows.map(({ id, title, reason }) => (
+            <Box key={id} gap={1}>
+              <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+                <Text bold>{title}</Text>
+                <Text dimColor>{reason}</Text>
+              </Box>
+              <Button
+                key={`decide-${id}`}
+                label="Decide"
+                onPress={() => $.prompt.submit({ text: decidePrompt(id) })}
+              />
             </Box>
-            <Button
-              key={`decide-${id}`}
-              label="Decide"
-              onPress={() => $.prompt.submit({ text: decidePrompt(id) })}
-            />
+          ))}
+          <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
+            <Text dimColor>{EXPLAINER}</Text>
           </Box>
-        ))}
+        </Box>
         {beneath}
       </Box>
     )
