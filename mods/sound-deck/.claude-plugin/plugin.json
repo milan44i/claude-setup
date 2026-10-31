@@ -1,0 +1,6 @@
+{
+  "name": "sound-deck",
+  "version": "0.1.0",
+  "description": "Fires a cannon on a merge, sounds a horn on a deploy and an alarm when a check fails, in the firstmate main session",
+  "types": "./types/index.d.ts"
+}
