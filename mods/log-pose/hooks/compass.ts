@@ -6,6 +6,10 @@ export const COMPASS_GLYPH = '🧭'
 
 const COMPASS_CELLS = 3
 
+export const POPOVER_BACKGROUND = '#2b2b2b'
+
+export const POPOVER_TEXT = '#f2f2f2'
+
 export const POPOVER = {
   position: 'absolute',
   top: 0,
@@ -13,7 +17,7 @@ export const POPOVER = {
   right: 0,
   display: 'none',
   hover: { display: 'flex' },
-  backgroundColor: 'text',
+  backgroundColor: POPOVER_BACKGROUND,
 } as const
 
 export const COMPASS_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="${COMPASS_SIZE}" height="${COMPASS_SIZE}" viewBox="0 0 20 20">

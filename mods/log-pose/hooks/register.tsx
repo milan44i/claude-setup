@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Deadline } from '../types'
-import { COMPASS_ALT, COMPASS_GLYPH, COMPASS_SIZE, COMPASS_SVG, POPOVER } from './compass'
+import { COMPASS_ALT, COMPASS_GLYPH, COMPASS_SIZE, COMPASS_SVG, POPOVER, POPOVER_TEXT } from './compass'
 import { daysLeftLabel, localDay, nextDeadline, parseObligations, parseTasks, popoverText } from './deadlines'
 
 const HOME = '/Users/milanstankovic/work/firstmate'
@@ -81,7 +81,7 @@ export const register: Register = on => {
             <Text dimColor>{daysLeftLabel(today, deadline.due)}</Text>
           </Box>
           <Box {...POPOVER}>
-            <Text color="inverseText" wrap="truncate-end">{popoverText(deadline.due)}</Text>
+            <Text color={POPOVER_TEXT} wrap="truncate-end">{popoverText(deadline.due)}</Text>
           </Box>
         </Box>
         {beneath}
