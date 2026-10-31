@@ -1,0 +1,5 @@
+{
+  "name": "wa-command",
+  "version": "0.1.0",
+  "description": "Adds /wa, which turns a draft into plain Latin letters and copies it"
+}
