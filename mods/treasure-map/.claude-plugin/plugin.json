@@ -1,0 +1,6 @@
+{
+  "name": "treasure-map",
+  "version": "0.1.0",
+  "description": "Draws the Potpis sales pipeline as a parchment sea chart in a pane",
+  "types": "./types/index.d.ts"
+}
