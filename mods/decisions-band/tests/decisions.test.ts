@@ -1567,6 +1567,32 @@ test('keyboard focus shows the card of Da and of Ne', async ($, on) => {
   await ui.unmount()
 })
 
+test('a click on a button leaves no card open, and the ring coming back shows it again', async ($, on) => {
+  await panelOpened($, on)
+
+  const ui = await mountPane($, 'desktop')
+  const focus = (element?: string) =>
+    $.ui.focus({
+      component: 'Pane',
+      requestId: 'decisions',
+      origin: { kind: 'person' },
+      ...(element === undefined ? {} : { plugin: 'decisions-band', element }),
+    })
+  const CLOSED = { props: { display: 'none' }, hover: { display: 'flex' } }
+  const cards = async () => (await buttonRowOf(ui)).slice(5)
+
+  for (const key of ['decide-pick-one', 'yes-pick-one', 'no-pick-one']) {
+    await focus(key)
+    await ui.press({ key })
+    expect(await cards()).toMatchObject([CLOSED, CLOSED, CLOSED, CLOSED])
+  }
+
+  await focus('hide-pick-one')
+  await focus('no-pick-one')
+  expect(await cards()).toMatchObject([CLOSED, { props: { display: 'flex' } }, CLOSED, CLOSED])
+  await ui.unmount()
+})
+
 test('a press queues that exact label, marks the row and runs nothing until Execute', async ($, on) => {
   const { calls } = await panelOpened($, on)
   const ui = await mountPane($, 'desktop')

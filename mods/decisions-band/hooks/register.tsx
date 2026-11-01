@@ -330,11 +330,17 @@ export const register: Register = on => {
   })
 
   on('ui.focus', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
-    const moved = await next(e)
-
+    // Before next, because a press that follows at once must clear this write, not be overwritten by it
     await update($, focused, () => e.element ?? '')
 
-    return moved
+    return next(e)
+  })
+
+  // ui.focus reports a click like a Tab and the ring stays on the pressed button, so only a press can end that reveal
+  on('ui.press', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
+    await update($, focused, () => '')
+
+    return next(e)
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
