@@ -45,6 +45,8 @@ const TIMBER = '#7a4e28'
 const CANVAS = '#eadfc6'
 const SEAM = '#8a7654'
 const FLAG = '#1c1c1c'
+const IRON = '#3b3f4a'
+const IRON_EDGE = '#6b7080'
 const FLAG_EDGE = '#d9d2c0'
 const BONE = '#f4f1e8'
 const STRAW = '#e8b93a'
@@ -162,15 +164,20 @@ const SKULL_FLAG = `<path d="M18 0.5H3.5Q2 5 3.5 10H18Z" fill="${FLAG}" stroke="
 <path d="M8.3 4.1H12.7V4.8H8.3Z" fill="${RIBBON}"/>
 <path d="M6.3 4.9Q10.5 3.9 14.7 4.9Q10.5 5.9 6.3 4.9Z" fill="${STRAW}"/>`
 
+const cannon = (x: number, y: number) => `<path d="M${x - 2.4} ${y - 0.9}L${x + 2.6} ${y - 1.1}L${x + 3.4} ${y - 1.9}H${x + 4.6}V${y + 1.9}H${x + 3.4}L${x + 2.6} ${y + 1.1}L${x - 2.4} ${y + 0.9}Z" fill="${IRON}" stroke="${IRON_EDGE}" stroke-width="0.4"/>
+<path d="M${x - 1.5} ${y - 0.5}H${x + 2.4}" stroke="${IRON_EDGE}" stroke-width="0.4"/>
+<circle cx="${x - 3}" cy="${y}" r="0.7" fill="${IRON}"/>
+<circle cx="${x - 0.3}" cy="${y + 1.4}" r="1" fill="${TIMBER}" stroke="${IRON_EDGE}" stroke-width="0.3"/>`
+
+const CANNONS = [cannon(11, 24.6), cannon(19.5, 24.9), cannon(28, 24.6)].join('\n')
+
 const PIRATE_SHIP = `<path d="M18 0V24M30 9V23" stroke="${TIMBER}" stroke-width="1.5" fill="none"/>
 ${SKULL_FLAG}
 <path d="M9 11.5Q18 9.5 27 11.5Q29.5 16.5 27 21.5Q18 19.8 9 21.5Q11.5 16.5 9 11.5Z" fill="${CANVAS}" stroke="${SEAM}" stroke-width="0.6"/>
 <path d="M31 10L38 20.5H31Z" fill="${CANVAS}" stroke="${SEAM}" stroke-width="0.6"/>
 <path d="M1 18.5H9V22.5H30L39.5 19.5L35.5 30.5Q20 32.5 5 30.5Z" fill="${WOOD}" stroke="${TIMBER}" stroke-width="0.8"/>
 <path d="M3.5 26.5Q20 28 36.8 26.5" stroke="${TIMBER}" stroke-width="0.7" fill="none"/>
-<circle cx="12" cy="24.6" r="0.9" fill="${TIMBER}"/>
-<circle cx="20" cy="24.8" r="0.9" fill="${TIMBER}"/>
-<circle cx="28" cy="24.6" r="0.9" fill="${TIMBER}"/>`
+${CANNONS}`
 
 const LANTERN = `<title>This lantern is the night watch, lit from 20:00 to 06:00 local time.</title>
 <circle cx="4.5" cy="14" r="6" fill="${FLAME}" opacity="0.35">
