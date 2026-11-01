@@ -463,12 +463,10 @@ test('the size estimate counts a persisted output and leaves out image bytes', (
   expect(estimateTokens({ type: 'image', file: { base64: 'x'.repeat(80_000) } })).toBeLessThan(100)
 })
 
-test('night brings a dark sea, a lantern and the line, and day takes them away', async ($, on) => {
+test('night brings a dark sea and a lantern, and day takes them away', async ($, on) => {
   const { clock } = await atSea($, on, NIGHT - 60_000)
-  const line = 'Idi spavaj, kapetane'
 
   expect((await drawnShip($)).source).not.toContain(LANTERN_FLAME)
-  expect(await lineOf($, line)).toBeUndefined()
 
   await clock.advance(60_000)
 
@@ -477,11 +475,9 @@ test('night brings a dark sea, a lantern and the line, and day takes them away',
   expect(night.source).toContain(LANTERN_FLAME)
   expect(night.source).toContain(NIGHT_WATER)
   expect(night.alt).toMatch(/lantern lit/)
-  expect(await lineOf($, line)).toBeDefined()
 
   await clock.set(new Date(2026, 10, 1, 6).getTime())
   expect((await drawnShip($)).source).not.toContain(LANTERN_FLAME)
-  expect(await lineOf($, line)).toBeUndefined()
 })
 
 test('the ship mirrors through zero width as the drift reaches each edge, around its center', () => {
@@ -521,13 +517,12 @@ const expectPopover = async ($: Engine, key: string, hint: RegExp) => {
   await ui.unmount()
 }
 
-test('the two lines hover popovers with no script, and the drawing carries titles', async ($, on) => {
+test('the line hovers a popover with no script, and the drawing carries titles', async ($, on) => {
   await atSea($, on, NIGHT, {}, {}, bigResult)
   await $.tool.call({ tool: 'Bash', command: 'npm test' })
 
   const { source } = await drawnShip($)
 
-  await expectPopover($, 'night-watch', /night watch runs from 20:00 to 06:00/)
   await expectPopover($, 'kraken', /Kraken names the tool call/)
   expect(source).toMatch(/^<svg [^>]*>\n<title>This ship shows the session/)
   expect(source).toMatch(/<title>This lantern is the night watch/)

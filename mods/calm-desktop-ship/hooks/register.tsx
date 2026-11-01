@@ -20,8 +20,6 @@ const FIRSTMATE_HOME = '/Users/milanstankovic/work/firstmate'
 const WEATHER_MS = 60_000
 const CHECKS_MS = 5 * 60_000
 const KRAKEN_MS = 30_000
-const NIGHT_LINE = 'Idi spavaj, kapetane'
-const NIGHT_HINT = 'The night watch runs from 20:00 to 06:00 local time and means it is late.'
 const KRAKEN_HINT = 'The Kraken names the tool call whose one result passed about 10k tokens of context.'
 
 const jobs = atom({ plugin: 'calm-desktop-ship', key: 'jobs' } as const, [] as Jobs)
@@ -161,7 +159,6 @@ export const register: Register = on => {
           height={SHIP_HEIGHT}
           isInteractive
         />
-        {scene.isNight ? hinted('night-watch', NIGHT_LINE, NIGHT_HINT) : null}
         {seized === null ? null : hinted('kraken', seized.line, KRAKEN_HINT)}
         {beneath}
       </Box>
