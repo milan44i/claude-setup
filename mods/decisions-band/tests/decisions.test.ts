@@ -1733,7 +1733,7 @@ test('when a row text changes its buttons leave before the new label is written,
 
 const SHIP = {
   name: 'ship-stand-in',
-  // Answers without next, as calm-desktop-ship's AbovePrompt hook does while its boat is up
+  // Answers without next, as an AbovePrompt hook does while its boat is up
   register(on: On) {
     on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => {
       if (e.surface !== 'desktop') return next(e)
