@@ -20,7 +20,7 @@ const FALL_SECONDS = 1.1
 const FADE_SECONDS = 0.5
 const SPLASH_SECONDS = 1
 
-// One mid tone per part reads on light and dark alike
+// One mid tone per part reads on light and dark alike, as in calm-desktop-ship
 const WATER = '#5769f7'
 const WOOD = '#a86b36'
 const TIMBER = '#7a4e28'
