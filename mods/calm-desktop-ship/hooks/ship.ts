@@ -40,10 +40,14 @@ const EASE = `calcMode="spline" keyTimes="0;.5;1" keySplines="${SPLINE};${SPLINE
 const WATER = '#5769f7'
 const STORM_WATER = '#4a5578'
 const NIGHT_WATER = '#2c3a86'
-const WOOD = '#a86b36'
+const WOOD = '#c26a2a'
 const TIMBER = '#7a4e28'
-const CANVAS = '#eadfc6'
+const RAIL = '#47280f'
+const CABIN = '#d9482b'
+const WINDOW = '#ffe15c'
+const CANVAS = '#f3e6c8'
 const SEAM = '#8a7654'
+const STRIPE = '#e8542a'
 const FLAG = '#1c1c1c'
 const IRON = '#3b3f4a'
 const IRON_EDGE = '#6b7080'
@@ -164,21 +168,25 @@ const SKULL_FLAG = `<path d="M18 0.5H3.5Q2 5 3.5 10H18Z" fill="${FLAG}" stroke="
 <path d="M8.3 4.1H12.7V4.8H8.3Z" fill="${RIBBON}"/>
 <path d="M6.3 4.9Q10.5 3.9 14.7 4.9Q10.5 5.9 6.3 4.9Z" fill="${STRAW}"/>`
 
-const CANNON = `<path d="M32 22V19H37.6L38.6 20.4Z" fill="${TIMBER}" stroke="${FLAG}" stroke-width="0.4"/>
-<circle cx="34.2" cy="21" r="1.9" fill="${WOOD}" stroke="${FLAG}" stroke-width="0.6"/>
-<circle cx="34.2" cy="21" r="0.5" fill="${FLAG}"/>
-<circle cx="31.7" cy="16.8" r="1.2" fill="${IRON}" stroke="${IRON_EDGE}" stroke-width="0.3"/>
-<path d="M33 14.9L41.5 15.5V18.1L33 18.7Q32 16.8 33 14.9Z" fill="${IRON}" stroke="${IRON_EDGE}" stroke-width="0.3"/>
-<path d="M34 15.8L40.5 16.2" stroke="${IRON_EDGE}" stroke-width="0.5"/>
-<rect x="41.2" y="15.1" width="1.3" height="3.4" rx="0.3" fill="${IRON}" stroke="${IRON_EDGE}" stroke-width="0.3"/>
-<ellipse cx="42.5" cy="16.8" rx="0.5" ry="1.2" fill="${FLAG}"/>`
+const CANNON = `<rect x="30.8" y="23.1" width="3.8" height="3.8" fill="${FLAG}" stroke="${RAIL}" stroke-width="0.6"/>
+<path d="M32.4 23.4L41 23.8V26.2L32.4 26.6Z" fill="${IRON}" stroke="${IRON_EDGE}" stroke-width="0.3"/>
+<path d="M33.2 24.3L40.2 24.5" stroke="${IRON_EDGE}" stroke-width="0.5"/>
+<rect x="40.8" y="23.5" width="1.3" height="3" rx="0.3" fill="${IRON}" stroke="${IRON_EDGE}" stroke-width="0.3"/>
+<ellipse cx="42.1" cy="25" rx="0.5" ry="1.1" fill="${FLAG}"/>`
 
-const PIRATE_SHIP = `<path d="M18 0V24M30 9V23" stroke="${TIMBER}" stroke-width="1.5" fill="none"/>
+const PIRATE_SHIP = `<path d="M18 0V24M31 10V23" stroke="${TIMBER}" stroke-width="1.5" fill="none"/>
 ${SKULL_FLAG}
-<path d="M9 11.5Q18 9.5 27 11.5Q29.5 16.5 27 21.5Q18 19.8 9 21.5Q11.5 16.5 9 11.5Z" fill="${CANVAS}" stroke="${SEAM}" stroke-width="0.6"/>
-<path d="M31 10L38 20.5H31Z" fill="${CANVAS}" stroke="${SEAM}" stroke-width="0.6"/>
-<path d="M1 18.5H9V22.5H30L39.5 19.5L35.5 30.5Q20 32.5 5 30.5Z" fill="${WOOD}" stroke="${TIMBER}" stroke-width="0.8"/>
-<path d="M3.5 26.5Q20 28 36.8 26.5" stroke="${TIMBER}" stroke-width="0.7" fill="none"/>
+<path d="M15.5 10.4H20.5L19.7 13H16.3Z" fill="${WOOD}" stroke="${RAIL}" stroke-width="0.5"/>
+<path d="M11.5 14Q18 12.8 24.5 14Q27 17.5 24.5 21Q18 19.8 11.5 21Q13 17.5 11.5 14Z" fill="${CANVAS}" stroke="${SEAM}" stroke-width="0.6"/>
+<path d="M26.5 12.5Q31 11.3 35.5 12.5Q37.5 16.5 35.5 20.5Q31 19.5 26.5 20.5Q28 16.5 26.5 12.5Z" fill="${CANVAS}"/>
+<path d="M29.5 12Q31 16 29.5 20M32.5 12Q34.5 16 32.5 20" stroke="${STRIPE}" stroke-width="1.9" fill="none"/>
+<path d="M26.5 12.5Q31 11.3 35.5 12.5Q37.5 16.5 35.5 20.5Q31 19.5 26.5 20.5Q28 16.5 26.5 12.5Z" fill="none" stroke="${SEAM}" stroke-width="0.6"/>
+<rect x="2.5" y="18.5" width="8" height="5" fill="${CABIN}"/>
+<path d="M3.8 19.7H5.8V21.7H3.8ZM7.2 19.7H9.2V21.7H7.2Z" fill="${WINDOW}" stroke="${RAIL}" stroke-width="0.3"/>
+<path d="M1.8 18.5H11.2" stroke="${RAIL}" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M2.5 21.5Q20 24 38.8 20.5Q38.5 26.5 33.5 30.5Q20 32.5 6.5 30.5Q2 27 2.5 21.5Z" fill="${WOOD}"/>
+<path d="M3 25Q17 26.6 30 25.6M4.5 28Q20 29.6 35 27.8" stroke="${TIMBER}" stroke-width="0.6" fill="none"/>
+<path d="M2.5 21.5Q20 24 38.8 20.5" stroke="${RAIL}" stroke-width="1.6" stroke-linecap="round" fill="none"/>
 ${CANNON}`
 
 const LANTERN = `<title>This lantern is the night watch, lit from 20:00 to 06:00 local time.</title>
