@@ -223,22 +223,6 @@ test('collapsed shows one line and counts only what waits on the captain', async
   }
 })
 
-test('hovering the band draws one hidden sentence out of the flow', async ($, on) => {
-  const clock = clockAt(on)
-  world(on, { held: { exitCode: 0, stdout: HELD } })
-  await start($, clock)
-
-  for (const surface of SURFACES) {
-    const ui = await mountBand($, surface)
-    const boxes = await ui.findAll({ type: 'Box' })
-
-    expect(boxes.map(box => box.props)).toContainEqual({ position: 'absolute', top: 0, right: 0, display: 'none' })
-    expect(boxes.some(box => box.key === 'band')).toBe(true)
-    expect(await ui.find({ type: 'Text', text: 'Lists the decisions waiting on you, click to open them.' })).toBeDefined()
-    await ui.unmount()
-  }
-})
-
 test('pressing the row opens the panel and the band stays one row', async ($, on) => {
   const clock = clockAt(on)
   const calls = world(on, { held: { exitCode: 0, stdout: HELD } })

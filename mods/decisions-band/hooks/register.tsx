@@ -40,7 +40,6 @@ const EXPLAIN_MS = 120_000
 const EXPLAIN_TOKENS = 2048
 // A task id cannot hold a colon, so these keys never read as a hidden row
 const QUICK_KEY = 'quick:'
-const EXPLAINER = 'Lists the decisions waiting on you, click to open them.'
 const LOADING = 'Explaining...'
 const PANE = 'decisions'
 const EMPTY_QUEUE: Queue = { marks: {}, damaged: [] }
@@ -309,21 +308,16 @@ export const register: Register = on => {
     if (e.props.hasSurvey || waiting.length === 0 || !(await isHome($))) return next(e)
 
     const beneath = await next(e)
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const { Box, Button } = $.ui.resolve(e)
 
     return (
       <Box flexDirection="column">
-        <Box key="band" flexDirection="column">
-          <Button
-            key="open"
-            plain
-            label={waitingLabel(waiting.length)}
-            onPress={() => openPanel($)}
-          />
-          <Box position="absolute" top={0} right={0} display="none" hover={{ display: 'flex' }}>
-            <Text dimColor>{EXPLAINER}</Text>
-          </Box>
-        </Box>
+        <Button
+          key="open"
+          plain
+          label={waitingLabel(waiting.length)}
+          onPress={() => openPanel($)}
+        />
         {beneath}
       </Box>
     )
