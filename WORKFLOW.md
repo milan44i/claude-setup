@@ -80,19 +80,19 @@ becomes a lie about what was built, and the next person reads the lie.
 
 ## The personal loop: lead to sold site
 
-The `biz-*` and `restaurant-*` skills encode a small business, not a hobby. The pipeline is
-the same shape in both verticals:
+These skills encode a small business, not a hobby. Only `polish-design` and `infra` are
+published; the other steps run on skills in a private repo:
 
 ```
-biz-scout / restaurant-scout   →  find and qualify candidates, write a dossier
+scout (private)                →  find and qualify candidates, write a dossier
         ↓
-biz-site / restaurant-site     →  build a bespoke themed demo site, deploy it, QA it
+build (private)                →  build a bespoke themed demo site, deploy it, QA it
         ↓
 polish-design                  →  page-by-page design pass before an owner ever sees it
         ↓
-biz-pitch / restaurant-pitch   →  draft the outreach message, land it on the sending board
+pitch (private)                →  draft the outreach message, land it on the sending board
         ↓
-biz-kokpit                     →  read-only view of the whole funnel: what to do next
+funnel view (private)          →  read-only view of the whole funnel: what to do next
         ↓
 infra                          →  the account map and runbook everything above deploys onto
 ```
@@ -104,7 +104,7 @@ never trust a number written in a file, including that file - run the command th
 question. Counts, lists and states go stale silently; conventions and decisions do not. So the
 skills carry the conventions and point at the CLI for the state.
 
-**One skill owns each file format.** `biz-kokpit` is a thin wrapper over a CLI and is
+**One skill owns each file format.** The funnel view is a thin wrapper over a CLI and is
 explicitly forbidden from parsing the funnel's markdown by hand. When two things can read a
 format, they drift, and the drift is invisible until it corrupts a registry.
 

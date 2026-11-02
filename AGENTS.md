@@ -15,8 +15,8 @@ hand. `README.md` states the scope; `WORKFLOW.md` is the document the rest exist
   employer identifiers (tracker host, project keys, internal repo/service/product names) and
   for live URLs whose only protection is obscurity. `skills/to-jira`, `skills/grilling` and
   `skills/grill-with-docs` are the files that historically carried employer detail; the
-  `biz-*` / `restaurant-*` skills carry the owner's own business URLs and client names by his
-  explicit choice - do not add more.
+  `biz-*` / `restaurant-*` skills moved to a private repo because they reveal the sales
+  process - do not bring them back.
 - **Never vendor a third-party skill.** Skills the owner did not write go in `MANIFEST.md` as
   an install command plus a line on why. A copy rots silently and publishes a fork nobody
   meant to maintain. The two exceptions in `skills/` (`grilling`, `grill-with-docs`) are

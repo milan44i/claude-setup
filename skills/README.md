@@ -36,17 +36,13 @@ ticketless fallback.
 ## Personal - the demo-selling pipeline
 
 A real small business: find local businesses without a decent website, build one, polish it,
-pitch it. Twelve `biz-*` verticals plus restaurants, roughly 147 generated client sites on
-Cloudflare Pages. These are published as-is because the method is the interesting part.
+pitch it. The scouting, building, pitching and funnel skills live in a private repo. Only these
+two are published.
 
 | Skill | What it does |
 |---|---|
-| [`biz-scout`](biz-scout/SKILL.md) / [`restaurant-scout`](restaurant-scout/SKILL.md) | Find and qualify candidates in a vertical, verify every fact and URL, and write a dossier the build lane can work from without asking anything. |
-| [`biz-site`](biz-site/SKILL.md) / [`restaurant-site`](restaurant-site/SKILL.md) | Build a bespoke themed demo from the dossier on top of the shared engine, deploy it, QA it live, and sync the theme back to the engine through a per-slug worktree and a PR. |
 | [`polish-design`](polish-design/SKILL.md) | Page-by-page design pass on a deployed site before an owner sees it: defects always, bounded beautification within the site's existing design DNA, never the DNA itself. |
-| [`biz-pitch`](biz-pitch/SKILL.md) / [`restaurant-pitch`](restaurant-pitch/SKILL.md) | Draft the outreach message per lead and put it on the sending board. A demo is not done until it is reachable from there. |
-| [`biz-kokpit`](biz-kokpit/SKILL.md) | Read-only funnel view across every vertical: candidates, built, offered, outcome, plus what to do next. A thin wrapper over the funnel CLI - it is forbidden from parsing the state files by hand. |
-| [`infra`](infra/SKILL.md) | The account-level map and runbook everything above deploys onto: the Pages branch-deploy model, the Workers side, domains and email, cap management, and the decision records behind each. Its own freshness rule: never trust a count written in a file, run the command. |
+| [`infra`](infra/SKILL.md) | The account-level map and runbook the pipeline deploys onto: the Pages branch-deploy model, the Workers side, domains and email, cap management, and the decision records behind each. Its own freshness rule: never trust a count written in a file, run the command. |
 
 ## Both halves
 

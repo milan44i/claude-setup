@@ -78,7 +78,7 @@ merges it in (my choices lose to yours on conflict). The ones that carry real we
 | `atlassian` | The Jira MCP that `to-jira`, `implement-ticket` and `ticket-code-consistency` all call. |
 | `chrome-devtools-mcp`, `playwright` | Installed, but `chrome-devtools-axi` is preferred for browser work. |
 | `code-review`, `code-simplifier`, `security-guidance`, `feature-dev` | Review and refactor passes. |
-| `frontend-design` | Used directly by `biz-site` and `restaurant-site` when styling a bespoke theme. |
+| `frontend-design` | Used directly by the private demo-building skills when styling a bespoke theme. |
 | `context7`, `typescript-lsp`, `skill-creator`, `superpowers`, `claude-md-management`, `claude-code-setup`, `vercel` | Everyday support. |
 
 ---
